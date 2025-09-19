@@ -1,12 +1,7 @@
 (function() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const asin = urlParams.get('asin');
-    let collectedAnnotations = [];
-
-    // Select all individual annotation entries/blocks under the main annotations container
-    const annotationEntries = document.querySelectorAll('div#kp-notebook-annotations > div.a-row.a-spacing-base');
-
-    annotationEntries.forEach(entry => {
+    function extractAnnotationsFromEntries(annotationEntries) {
+        let collectedAnnotations = [];
+        annotationEntries.forEach(entry => {
         const highlightSpan = entry.querySelector('span#highlight');
 
         if (highlightSpan) {
@@ -26,6 +21,15 @@
         }
         // If no highlightSpan in the entry, this entry is ignored (e.g., an orphaned note without a highlight).
     });
+        return collectedAnnotations;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const asin = urlParams.get('asin');
+
+    // Select all individual annotation entries/blocks under the main annotations container
+    const annotationEntries = document.querySelectorAll('div#kp-notebook-annotations > div.a-row.a-spacing-base');
+    let collectedAnnotations = extractAnnotationsFromEntries(annotationEntries);
 
     if (typeof AndroidInterface !== 'undefined' && AndroidInterface.processBookHighlights) {
         AndroidInterface.processBookHighlights(JSON.stringify(collectedAnnotations), asin);

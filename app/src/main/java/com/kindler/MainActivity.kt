@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
         private const val SIGN_IN_URL_PREFIX = "https://www.amazon.com/ap/signin"
     }
 
-    private enum class State { INITIAL, LOADING_BOOK_LIST, PROCESSING_BOOKS, LOADING_HIGHLIGHTS, FINISHED, ERROR }
+    private enum class State { INITIAL, LOADING_BOOK_LIST, LOADING_HIGHLIGHTS, FINISHED, ERROR }
 
     private var currentState = State.INITIAL
     private var currentBookIndex = 0
@@ -120,20 +120,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadNextBookHighlights() {
-        if (currentState == State.ERROR || currentState == State.FINISHED) {
-            Log.w(TAG, "loadNextBookHighlights called in terminal state $currentState. Aborting.")
+        if (currentState != State.LOADING_HIGHLIGHTS) {
+            Log.e(TAG, "loadNextBookHighlights called in a wrong state $currentState. Aborting.")
             return
         }
-        if (currentBookIndex < booksList.size) {
-            val book = booksList[currentBookIndex]
-            currentState = State.LOADING_HIGHLIGHTS
-            val highlightsUrl = "$HIGHLIGHT_URL_PREFIX${book.asin}$HIGHLIGHT_URL_SUFFIX"
-            Log.i(TAG, "Loading highlights for book '${book.title}' (ASIN: ${book.asin}) from $highlightsUrl")
-            myWebView.loadUrl(highlightsUrl)
-        } else {
-            Log.i(TAG, "All books processed. Highlight extraction complete.")
-            terminateProcess(State.FINISHED)
+        if (currentBookIndex >=  booksList.size) {
+             Log.e(TAG, "loadNextBookHighlights called with invalid index $currentBookIndex. Book list size: ${booksList.size}. Aborting.")
+            return
         }
+        val book = booksList[currentBookIndex]
+        val highlightsUrl = "$HIGHLIGHT_URL_PREFIX${book.asin}$HIGHLIGHT_URL_SUFFIX"
+        Log.i(TAG, "Loading highlights for book '${book.title}' (ASIN: ${book.asin}) from $highlightsUrl")
+        myWebView.loadUrl(highlightsUrl)
     }
 
     private fun loadAndExecuteJavascript(webView: WebView?, scriptName: String) {
@@ -173,7 +171,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun processBookData(bookDataJson: String) {
-            if (currentState == State.ERROR) return
+            if (currentState != State.LOADING_BOOK_LIST) return
             Log.i(TAG, "Received book list data. Processing...")
             try {
                 val rawBooksArray = JSONArray(bookDataJson)
@@ -187,13 +185,15 @@ class MainActivity : AppCompatActivity() {
                     booksList.add(BookEntry(asin, title, author, lastAccessedDate))
                 }
                 Log.i(TAG, "Total books found on main page: ${booksList.size}")
-                if (booksList.isNotEmpty()) {
-                     currentState = State.PROCESSING_BOOKS
-                     runOnUiThread { loadNextBookHighlights() }
-                } else {
+                if (booksList.isEmpty()) {
                     Log.i(TAG, "No books found in the list. Finishing process.")
                     terminateProcess(State.FINISHED)
+                    return
                 }
+
+                // move on to loading the first book's highlights
+                currentState = State.LOADING_HIGHLIGHTS
+                runOnUiThread { loadNextBookHighlights() }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing book list data: ", e)
                 terminateProcess(State.ERROR)
@@ -202,10 +202,9 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun processBookHighlights(highlightsJson: String, asin: String) {
-            if (currentState == State.ERROR) return
+            if (currentState != State.LOADING_HIGHLIGHTS) return
             val currentBook = booksList.getOrNull(currentBookIndex)
             val bookTitle = currentBook?.title ?: "Unknown (ASIN: $asin)"
-            Log.i(TAG, "Received highlights for book '$bookTitle'.")
             try {
                 val highlightsArray = JSONArray(highlightsJson)
                 if (highlightsArray.length() == 0) {
@@ -220,16 +219,16 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing highlights for ASIN $asin: ", e)
-                currentState = State.ERROR
+                // we continue to process highlights even though there's an error
             }
-            
-            currentBookIndex++ 
-            
-            if (currentState != State.ERROR) {
+
+            // load the next book highlights
+            currentBookIndex++
+            if (currentBookIndex < booksList.size) {
                 runOnUiThread { loadNextBookHighlights() }
             } else {
-                 Log.w(TAG, "Error state detected after processing highlights for ASIN $asin.")
-                 terminateProcess(State.ERROR)
+                Log.i(TAG, "Highlight extraction complete.")
+                terminateProcess(State.FINISHED)
             }
         }
     }
