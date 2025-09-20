@@ -2,7 +2,7 @@
     var previousHeight = 0;
     var currentHeight = document.body.scrollHeight;
     var attempts = 0;
-    var maxAttempts = 5; // Number of times to try scrolling to ensure all content is loaded
+    var maxAttempts = 3; // Number of times to try scrolling to ensure all content is loaded
     var scrollDelay = 2000; // Delay in ms to wait for content to load after scroll
 
     function extractBookData() {
