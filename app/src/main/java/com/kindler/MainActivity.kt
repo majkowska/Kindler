@@ -11,12 +11,9 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 
-data class BookEntry(val asin: String, val title: String, val author: String, val lastAccessedDate: String)
 
 class MainActivity : AppCompatActivity() {
 
@@ -29,11 +26,7 @@ class MainActivity : AppCompatActivity() {
         private const val SIGN_IN_URL_PREFIX = "https://www.amazon.com/ap/signin"
     }
 
-    private enum class State { INITIAL, LOADING_BOOK_LIST, LOADING_HIGHLIGHTS, FINISHED, ERROR }
-
-    private var currentState = State.INITIAL
-    private var currentBookIndex = 0
-    private var booksList: MutableList<BookEntry> = mutableListOf()
+    private val importStateMachine = NotebookImportStateMachine()
     private lateinit var myWebView: WebView
     private lateinit var overlayLayout: LinearLayout
     private lateinit var startImportButton: Button
@@ -56,11 +49,11 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 Log.i(TAG, "New page finished loading: $url")
-                Log.d(TAG, "Current state: $currentState")
-                when (currentState) {
-                    State.INITIAL -> checkLoginAndUrlStatus()
-                    State.LOADING_BOOK_LIST -> verifyUrlAndProceed(NOTEBOOK_URL, url, "extract_book_list.js")
-                    State.LOADING_HIGHLIGHTS -> verifyUrlAndProceed(HIGHLIGHT_URL_PREFIX, url, "extract_highlights.js")
+                Log.d(TAG, "Current state: ${importStateMachine.state}")
+                when (importStateMachine.state) {
+                    ImportState.INITIAL -> checkLoginAndUrlStatus()
+                    ImportState.LOADING_BOOK_LIST -> verifyUrlAndProceed(NOTEBOOK_URL, url, "extract_book_list.js")
+                    ImportState.LOADING_HIGHLIGHTS -> verifyUrlAndProceed(HIGHLIGHT_URL_PREFIX, url, "extract_highlights.js")
                     else -> {
                         // No action needed for other states
                     }
@@ -90,12 +83,16 @@ class MainActivity : AppCompatActivity() {
         myWebView.evaluateJavascript(script, null)
     }
     
-    private fun terminateProcess(finalState: State) {
-        if (finalState != State.FINISHED && finalState != State.ERROR) {
+    private fun terminateProcess(finalState: ImportState) {
+        if (finalState != ImportState.FINISHED && finalState != ImportState.ERROR) {
             Log.w(TAG, "terminateProcess called with non-terminal state: $finalState")
             return
         }
-        currentState = finalState
+        when (finalState) {
+            ImportState.FINISHED -> importStateMachine.markFinished()
+            ImportState.ERROR -> importStateMachine.markError()
+            else -> { /* Already validated above */ }
+        }
         runOnUiThread {
             overlayLayout.visibility = View.VISIBLE
             checkLoginAndUrlStatus()
@@ -103,9 +100,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startImportProcess(){
-        currentState = State.LOADING_BOOK_LIST
-        currentBookIndex = 0
-        booksList.clear()
+        importStateMachine.startImport()
         Log.d(TAG, "Starting import process. Loading book list page: $NOTEBOOK_URL")
         myWebView.loadUrl(NOTEBOOK_URL)
     }
@@ -114,21 +109,25 @@ class MainActivity : AppCompatActivity() {
         if (actualUrl?.startsWith(expectedUrlPrefix) == true) {
             loadAndExecuteJavascript(myWebView, scriptToLoad)
         } else {
-            Log.e(TAG, "URL Mismatch! State: $currentState, Expected prefix: '$expectedUrlPrefix', Actual: '$actualUrl'.")
-            terminateProcess(State.ERROR)
+            Log.e(TAG, "URL Mismatch! State: ${importStateMachine.state}, Expected prefix: '$expectedUrlPrefix', Actual: '$actualUrl'.")
+            terminateProcess(ImportState.ERROR)
         }
     }
 
     private fun loadNextBookHighlights() {
-        if (currentState != State.LOADING_HIGHLIGHTS) {
-            Log.e(TAG, "loadNextBookHighlights called in a wrong state $currentState. Aborting.")
+        if (importStateMachine.state != ImportState.LOADING_HIGHLIGHTS) {
+            Log.e(TAG, "loadNextBookHighlights called in a wrong state ${importStateMachine.state}. Aborting.")
             return
         }
-        if (currentBookIndex >=  booksList.size) {
-             Log.e(TAG, "loadNextBookHighlights called with invalid index $currentBookIndex. Book list size: ${booksList.size}. Aborting.")
+        val book = importStateMachine.currentBook()
+        if (book == null) {
+            Log.e(
+                TAG,
+                "loadNextBookHighlights called with invalid index ${importStateMachine.currentBookIndex}. " +
+                        "Book list size: ${importStateMachine.totalBooks}. Aborting."
+            )
             return
         }
-        val book = booksList[currentBookIndex]
         val highlightsUrl = "$HIGHLIGHT_URL_PREFIX${book.asin}$HIGHLIGHT_URL_SUFFIX"
         Log.i(TAG, "Loading highlights for book '${book.title}' (ASIN: ${book.asin}) from $highlightsUrl")
         myWebView.loadUrl(highlightsUrl)
@@ -145,7 +144,7 @@ class MainActivity : AppCompatActivity() {
             javascript = String(buffer, StandardCharsets.UTF_8)
         } catch (e: IOException) {
             Log.e(TAG, "Error reading $scriptName from assets", e)
-            terminateProcess(State.ERROR)
+            terminateProcess(ImportState.ERROR)
             return
         }
         Log.d(TAG, "Executing $scriptName")
@@ -171,64 +170,66 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun processBookData(bookDataJson: String) {
-            if (currentState != State.LOADING_BOOK_LIST) return
+            if (importStateMachine.state != ImportState.LOADING_BOOK_LIST) return
             Log.i(TAG, "Received book list data. Processing...")
-            try {
-                val rawBooksArray = JSONArray(bookDataJson)
-                booksList.clear()
-                for (i in 0 until rawBooksArray.length()) {
-                    val bookObject: JSONObject = rawBooksArray.getJSONObject(i)
-                    val asin = bookObject.getString("asin")
-                    val title = bookObject.getString("title")
-                    val author = bookObject.getString("author")
-                    val lastAccessedDate = bookObject.getString("lastAccessedDate")
-                    booksList.add(BookEntry(asin, title, author, lastAccessedDate))
+            NotebookJsonParser.parseBookEntries(bookDataJson)
+                .onSuccess { parsedBooks ->
+                    Log.i(TAG, "Total books found on main page: ${parsedBooks.size}")
+                    when (val result = importStateMachine.onBooksParsed(parsedBooks)) {
+                        NotebookImportStateMachine.BooksUpdateResult.NoBooks -> {
+                            Log.i(TAG, "No books found in the list. Finishing process.")
+                            terminateProcess(ImportState.FINISHED)
+                        }
+                        is NotebookImportStateMachine.BooksUpdateResult.Ready -> {
+                            runOnUiThread { loadNextBookHighlights() }
+                        }
+                        is NotebookImportStateMachine.BooksUpdateResult.InvalidState -> {
+                            Log.e(TAG, "Received book data while in invalid state ${result.state}.")
+                            terminateProcess(ImportState.ERROR)
+                        }
+                    }
                 }
-                Log.i(TAG, "Total books found on main page: ${booksList.size}")
-                if (booksList.isEmpty()) {
-                    Log.i(TAG, "No books found in the list. Finishing process.")
-                    terminateProcess(State.FINISHED)
-                    return
+                .onFailure { e ->
+                    Log.e(TAG, "Error processing book list data: ", e)
+                    terminateProcess(ImportState.ERROR)
                 }
-
-                // move on to loading the first book's highlights
-                currentState = State.LOADING_HIGHLIGHTS
-                runOnUiThread { loadNextBookHighlights() }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing book list data: ", e)
-                terminateProcess(State.ERROR)
-            }
         }
 
         @JavascriptInterface
         fun processBookHighlights(highlightsJson: String, asin: String) {
-            if (currentState != State.LOADING_HIGHLIGHTS) return
-            val currentBook = booksList.getOrNull(currentBookIndex)
+            if (importStateMachine.state != ImportState.LOADING_HIGHLIGHTS) return
+            val currentBook = importStateMachine.currentBook()
             val bookTitle = currentBook?.title ?: "Unknown (ASIN: $asin)"
-            try {
-                val highlightsArray = JSONArray(highlightsJson)
-                if (highlightsArray.length() == 0) {
-                     Log.i(TAG, "No highlights found for book '$bookTitle' (ASIN: $asin).")
-                } else {
-                    for (i in 0 until highlightsArray.length()) {
-                        val highlightObject: JSONObject = highlightsArray.getJSONObject(i)
-                        val highlightText = highlightObject.getString("highlight")
-                        val noteText = highlightObject.getString("note")
-                        Log.i(TAG, "ASIN: $asin - Highlight: \"$highlightText\" --- Note: \"$noteText\"")
+            NotebookJsonParser.parseHighlights(highlightsJson)
+                .onSuccess { highlights ->
+                    if (highlights.isEmpty()) {
+                        Log.i(TAG, "No highlights found for book '$bookTitle' (ASIN: $asin).")
+                    } else {
+                        highlights.forEach { highlightEntry ->
+                            Log.i(
+                                TAG,
+                                "ASIN: $asin - Highlight: \"${highlightEntry.highlight}\" --- Note: \"${highlightEntry.note}\""
+                            )
+                        }
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing highlights for ASIN $asin: ", e)
-                // we continue to process highlights even though there's an error
-            }
+                .onFailure { e ->
+                    Log.e(TAG, "Error processing highlights for ASIN $asin: ", e)
+                    // we continue to process highlights even though there's an error
+                }
 
-            // load the next book highlights
-            currentBookIndex++
-            if (currentBookIndex < booksList.size) {
-                runOnUiThread { loadNextBookHighlights() }
-            } else {
-                Log.i(TAG, "Highlight extraction complete.")
-                terminateProcess(State.FINISHED)
+            when (val result = importStateMachine.advanceToNextBook()) {
+                is NotebookImportStateMachine.HighlightProcessingResult.Next -> {
+                    runOnUiThread { loadNextBookHighlights() }
+                }
+                NotebookImportStateMachine.HighlightProcessingResult.Completed -> {
+                    Log.i(TAG, "Highlight extraction complete.")
+                    terminateProcess(ImportState.FINISHED)
+                }
+                is NotebookImportStateMachine.HighlightProcessingResult.InvalidState -> {
+                    Log.e(TAG, "advanceToNextBook called in a wrong state ${result.state}. Aborting.")
+                    terminateProcess(ImportState.ERROR)
+                }
             }
         }
     }
