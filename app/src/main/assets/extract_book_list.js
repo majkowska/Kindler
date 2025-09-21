@@ -1,9 +1,12 @@
 (function() {
-    var previousHeight = 0;
-    var currentHeight = document.body.scrollHeight;
-    var attempts = 0;
-    var maxAttempts = 3; // Number of times to try scrolling to ensure all content is loaded
-    var scrollDelay = 2000; // Delay in ms to wait for content to load after scroll
+    var scrollIntervalMs = 2000; // How often to trigger a scroll to fetch more content
+    var idleDelayMs = scrollIntervalMs; // Keep idle checks aligned with scroll cadence
+    var maxConsecutiveIdleChecksWithoutNewData = 3; // Matches the previous "maxAttempts" behavior
+    var observer = null;
+    var idleTimer = null;
+    var scrollTimer = null;
+    var sawNewNodesSinceLastIdleCheck = false;
+    var consecutiveIdleChecksWithoutNewData = 0;
 
     function extractBookData() {
         var libraryDiv = document.getElementById('kp-notebook-library');
@@ -15,11 +18,11 @@
                 var titleElement = bookElement.querySelector('h2.kp-notebook-searchable');
                 var authorElement = bookElement.querySelector('p.kp-notebook-searchable');
                 var dateElement = document.getElementById('kp-notebook-annotated-date-' + asin);
-                
+
                 var title = titleElement ? titleElement.innerText : '';
                 var author = authorElement ? authorElement.innerText.replace('By: ', '') : '';
                 var lastAccessedDate = dateElement ? dateElement.value : '';
-                
+
                 if (asin && title.trim() && author.trim() && lastAccessedDate.trim()) {
                     books.push({
                         asin: asin,
@@ -43,31 +46,105 @@
         }
     }
 
-    function scrollAndCheck() {
-        previousHeight = document.body.scrollHeight;
-        window.scrollTo(0, document.body.scrollHeight);
-        
-        setTimeout(function() {
-            currentHeight = document.body.scrollHeight;
-            if (currentHeight > previousHeight) {
-                console.log("Scrolled. New height: " + currentHeight + ", Previous height: " + previousHeight + ", Attempt: " + attempts);
-                attempts = 0;
-                scrollAndCheck();
-            } else if (attempts < maxAttempts) {
-                attempts++;
-                scrollAndCheck();
-                console.log("Failed scroll attempt. Current height: " + currentHeight + ", Previous height: " + previousHeight + ", Attempt: " + attempts);}
-            else {
-                console.log("Finished scrolling, attempts: " + attempts + ". Current height: " + currentHeight + ", Previous height: " + previousHeight + ". Extracting data.");
-                extractBookData();
-            }
-        }, scrollDelay);
+    function cleanupAndExtract() {
+        if (observer) {
+            observer.disconnect();
+            observer = null;
+        }
+        if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
+        }
+        if (scrollTimer) {
+            clearInterval(scrollTimer);
+            scrollTimer = null;
+        }
+        console.log("No new nodes detected within the idle window. Extracting data.");
+        extractBookData();
     }
 
-    if (document.getElementById('kp-notebook-library')) {
-        console.log("Initial library div found. Starting scroll and check.");
-        scrollAndCheck();
-    } else {
-        console.log("Initial library div not found. Data extraction will not proceed.");
+    function scheduleIdleCheck() {
+        if (idleTimer) {
+            clearTimeout(idleTimer);
+        }
+        idleTimer = setTimeout(handleIdleTimeout, idleDelayMs);
     }
+
+    function handleIdleTimeout() {
+        if (sawNewNodesSinceLastIdleCheck) {
+            sawNewNodesSinceLastIdleCheck = false;
+            consecutiveIdleChecksWithoutNewData = 0;
+            scheduleIdleCheck();
+            return;
+        }
+
+        consecutiveIdleChecksWithoutNewData += 1;
+
+        if (consecutiveIdleChecksWithoutNewData < maxConsecutiveIdleChecksWithoutNewData) {
+            console.log(
+                "No new nodes detected during idle window. Allowing additional attempt " +
+                consecutiveIdleChecksWithoutNewData +
+                " of " +
+                maxConsecutiveIdleChecksWithoutNewData +
+                "."
+            );
+            scheduleIdleCheck();
+            return;
+        }
+
+        console.log("Reached idle attempt limit without new nodes. Extracting data.");
+        cleanupAndExtract();
+    }
+
+    function registerNewNodesDetected() {
+        sawNewNodesSinceLastIdleCheck = true;
+        consecutiveIdleChecksWithoutNewData = 0;
+        scheduleIdleCheck();
+    }
+
+    function startObserver(libraryDiv) {
+        observer = new MutationObserver(function(mutationsList) {
+            var sawAddedNodes = false;
+            for (var i = 0; i < mutationsList.length; i++) {
+                var mutation = mutationsList[i];
+                if (mutation.type === 'childList' && mutation.addedNodes && mutation.addedNodes.length > 0) {
+                    sawAddedNodes = true;
+                    break;
+                }
+            }
+
+            if (sawAddedNodes) {
+                console.log("Detected new nodes in the library. Waiting for additional content before final extraction.");
+                registerNewNodesDetected();
+            }
+        });
+
+        observer.observe(libraryDiv, { childList: true, subtree: true });
+    }
+
+    function startScrolling() {
+        window.scrollTo(0, document.body.scrollHeight);
+        scrollTimer = setInterval(function() {
+            window.scrollTo(0, document.body.scrollHeight);
+        }, scrollIntervalMs);
+    }
+
+    var libraryDiv = document.getElementById('kp-notebook-library');
+
+    if (!libraryDiv) {
+        console.log("Library div not found. Data extraction will not proceed.");
+        return;
+    }
+
+    if (typeof MutationObserver === 'undefined') {
+        console.log("MutationObserver is not supported in this environment. Extracting data immediately.");
+        extractBookData();
+        return;
+    }
+
+    console.log("Library div found. Setting up mutation observer to watch for new content.");
+
+    startObserver(libraryDiv);
+    startScrolling();
+    scheduleIdleCheck();
 })();
