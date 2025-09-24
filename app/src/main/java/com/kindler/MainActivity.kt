@@ -11,6 +11,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.io.File
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 
@@ -24,6 +25,7 @@ class MainActivity : AppCompatActivity() {
         private const val HIGHLIGHT_URL_PREFIX = "${BASE_URL}notebook?asin="
         private const val HIGHLIGHT_URL_SUFFIX = "&contentLimitState="
         private const val SIGN_IN_URL_PREFIX = "https://www.amazon.com/ap/signin"
+        private const val HIGHLIGHTS_FILE_NAME = "kindle_highlights.json"
     }
 
     private val importStateMachine = NotebookImportStateMachine()
@@ -31,6 +33,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var overlayLayout: LinearLayout
     private lateinit var startImportButton: Button
     private lateinit var promptTextView: TextView
+    private lateinit var highlightsFileStore: HighlightsFileStore
+    private var highlightsStoreResetThisRun = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +45,7 @@ class MainActivity : AppCompatActivity() {
         overlayLayout = findViewById(R.id.overlayLayout)
         startImportButton = findViewById(R.id.startImportButton)
         promptTextView = findViewById(R.id.promptTextView)
+        highlightsFileStore = HighlightsFileStore(File(filesDir, HIGHLIGHTS_FILE_NAME))
 
         myWebView.settings.javaScriptEnabled = true
         myWebView.addJavascriptInterface(WebAppInterface(), "AndroidInterface")
@@ -100,6 +105,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startImportProcess(){
+        highlightsStoreResetThisRun = false
         importStateMachine.startImport()
         Log.d(TAG, "Starting import process. Loading book list page: $NOTEBOOK_URL")
         myWebView.loadUrl(NOTEBOOK_URL)
@@ -151,6 +157,21 @@ class MainActivity : AppCompatActivity() {
         webView?.evaluateJavascript(javascript, null)
     }
 
+    private fun ensureHighlightsStoreReady(): Boolean {
+        if (highlightsStoreResetThisRun) {
+            return true
+        }
+        return try {
+            highlightsFileStore.reset()
+            highlightsStoreResetThisRun = true
+            true
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to reset highlights storage", e)
+            terminateProcess(ImportState.ERROR)
+            false
+        }
+    }
+
     inner class WebAppInterface {
         @JavascriptInterface
         fun reportUiStatus(isLoggedIn: Boolean, isOnNotebookPage: Boolean, isOnSignInPage: Boolean) {
@@ -200,29 +221,44 @@ class MainActivity : AppCompatActivity() {
             if (importStateMachine.state != ImportState.LOADING_HIGHLIGHTS) return
             val currentBook = importStateMachine.currentBook()
             val bookTitle = currentBook?.title ?: "Unknown (ASIN: $asin)"
-            NotebookJsonParser.parseHighlights(highlightsJson)
-                .onSuccess { highlights ->
-                    if (highlights.isEmpty()) {
-                        Log.i(TAG, "No highlights found for book '$bookTitle' (ASIN: $asin).")
-                    } else {
-                        highlights.forEach { highlightEntry ->
-                            Log.i(
-                                TAG,
-                                "ASIN: $asin - Highlight: \"${highlightEntry.highlight}\" --- Note: \"${highlightEntry.note}\""
-                            )
-                        }
+            val parseResult = NotebookJsonParser.parseHighlights(highlightsJson)
+            val highlights = parseResult.getOrNull()
+            if (highlights != null) {
+                if (!ensureHighlightsStoreReady()) {
+                    return
+                }
+                try {
+                    highlightsFileStore.addBookHighlights(asin, bookTitle, highlights)
+                } catch (e: IOException) {
+                    Log.e(TAG, "Failed to persist highlights for ASIN $asin", e)
+                }
+                if (highlights.isEmpty()) {
+                    Log.i(TAG, "No highlights found for book '$bookTitle' (ASIN: $asin).")
+                } else {
+                    highlights.forEach { highlightEntry ->
+                        Log.i(
+                            TAG,
+                            "ASIN: $asin - Highlight: \"${highlightEntry.highlight}\" --- Note: \"${highlightEntry.note}\""
+                        )
                     }
                 }
-                .onFailure { e ->
+            } else {
+                parseResult.exceptionOrNull()?.let { e ->
                     Log.e(TAG, "Error processing highlights for ASIN $asin: ", e)
                     // we continue to process highlights even though there's an error
                 }
+            }
 
             when (val result = importStateMachine.advanceToNextBook()) {
                 is NotebookImportStateMachine.HighlightProcessingResult.Next -> {
                     runOnUiThread { loadNextBookHighlights() }
                 }
                 NotebookImportStateMachine.HighlightProcessingResult.Completed -> {
+                    try {
+                        highlightsFileStore.flush()
+                    } catch (e: IOException) {
+                        Log.e(TAG, "Failed to flush highlights to file", e)
+                    }
                     Log.i(TAG, "Highlight extraction complete.")
                     terminateProcess(ImportState.FINISHED)
                 }
