@@ -217,10 +217,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
-        fun processBookHighlights(highlightsJson: String, asin: String) {
+        fun processBookHighlights(highlightsJson: String) {
             if (importStateMachine.state != ImportState.LOADING_HIGHLIGHTS) return
             val currentBook = importStateMachine.currentBook()
-            val bookTitle = currentBook?.title ?: "Unknown (ASIN: $asin)"
+            if (currentBook == null || currentBook.asin.isEmpty())  {
+                Log.e(TAG, "No book data available for the current book. Aborting.")
+                terminateProcess(ImportState.ERROR)
+                return
+            }
             val parseResult = NotebookJsonParser.parseHighlights(highlightsJson)
             val highlights = parseResult.getOrNull()
             if (highlights != null) {
@@ -228,23 +232,23 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
                 try {
-                    highlightsFileStore.addBookHighlights(asin, bookTitle, highlights)
+                    highlightsFileStore.addBookHighlights(currentBook, highlights)
                 } catch (e: IOException) {
-                    Log.e(TAG, "Failed to persist highlights for ASIN $asin", e)
+                    Log.e(TAG, "Failed to persist highlights for ASIN $currentBook.asin", e)
                 }
                 if (highlights.isEmpty()) {
-                    Log.i(TAG, "No highlights found for book '$bookTitle' (ASIN: $asin).")
+                    Log.i(TAG, "No highlights found for book '$currentBook.bookTitle' (ASIN: $currentBook.asin).")
                 } else {
                     highlights.forEach { highlightEntry ->
                         Log.i(
                             TAG,
-                            "ASIN: $asin - Highlight: \"${highlightEntry.highlight}\" --- Note: \"${highlightEntry.note}\""
+                            "ASIN: $currentBook.asin - Highlight: \"${highlightEntry.highlight}\" --- Note: \"${highlightEntry.note}\""
                         )
                     }
                 }
             } else {
                 parseResult.exceptionOrNull()?.let { e ->
-                    Log.e(TAG, "Error processing highlights for ASIN $asin: ", e)
+                    Log.e(TAG, "Error processing highlights for book '$currentBook.bookTitle' (ASIN: $currentBook.asin): ", e)
                     // we continue to process highlights even though there's an error
                 }
             }
