@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.google.android.material.appbar.MaterialToolbar
@@ -34,6 +35,7 @@ class MainActivity : AppCompatActivity() {
         )
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
+        toggle.drawerArrowDrawable.color = ContextCompat.getColor(this, R.color.black)
 
         navigationView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
@@ -44,6 +46,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 else -> false
             }
+        }
+
+        if (savedInstanceState == null) {
+            navigationView.setCheckedItem(R.id.nav_import)
+            navigationView.menu.performIdentifierAction(R.id.nav_import, 0)
         }
     }
 

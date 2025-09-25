@@ -1,7 +1,6 @@
 <resources>
     <string name="app_name">Kindler</string>
     <string name="app_title">My Highlights</string>
-    <string name="main_placeholder">Select an option from the menu to get started.</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
     <string name="nav_import">Import</string>
