@@ -228,7 +228,13 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
                 try {
-                    highlightsFileStore.addBookHighlights(asin, bookTitle, highlights)
+                    val bookEntry = currentBook ?: BookEntry(
+                        asin = asin,
+                        title = bookTitle,
+                        author = "",
+                        lastAccessedDate = ""
+                    )
+                    highlightsFileStore.addBookHighlights(bookEntry, highlights)
                 } catch (e: IOException) {
                     Log.e(TAG, "Failed to persist highlights for ASIN $asin", e)
                 }
