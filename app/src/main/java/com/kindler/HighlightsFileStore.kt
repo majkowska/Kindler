@@ -11,7 +11,7 @@ class HighlightsFileStore(
     private val flushThreshold: Int = DEFAULT_FLUSH_THRESHOLD
 ) {
 
-    private val storedBooks = mutableListOf<BookHighlights>()
+    private val storedBooks = mutableListOf<BookEntry>()
 
     @Throws(IOException::class)
     fun reset() {
@@ -23,13 +23,14 @@ class HighlightsFileStore(
 
     @Throws(IOException::class)
     fun addBookHighlights(
-        asin: String,
-        title: String,
+        book: BookEntry,
         highlights: List<HighlightEntry>
     ) {
-        storedBooks.add(BookHighlights(asin, title, highlights))
+        val bookWithHighlights = book.copy(highlights = highlights)
+        storedBooks.add(bookWithHighlights)
         if (flushThreshold > 0 && storedBooks.size % flushThreshold == 0) {
             writeToFile(storedBooks)
+            storedBooks.clear()
         }
     }
 
@@ -39,45 +40,35 @@ class HighlightsFileStore(
             return
         }
         writeToFile(storedBooks)
+        storedBooks.clear()
     }
 
     @Throws(IOException::class)
-    private fun writeToFile(books: List<BookHighlights>) {
+    private fun writeToFile(books: List<BookEntry>) {
         val snapshot = books.toList()
-        val payload = JSONObject().apply {
-            put("bookCount", snapshot.size)
-            put("books", JSONArray().apply {
-                snapshot.forEach { book ->
-                    put(JSONObject().apply {
-                        put("asin", book.asin)
-                        put("title", book.title)
-                        put("highlights", JSONArray().apply {
-                            book.highlights.forEach { highlight ->
-                                put(JSONObject().apply {
-                                    put("highlight", highlight.highlight)
-                                    put("note", highlight.note)
-                                })
-                            }
-                        })
-                    })
-                }
-            })
-        }
         outputFile.parentFile?.let { parent ->
             if (!parent.exists() && !parent.mkdirs()) {
                 throw IOException("Failed to create directory for highlights file: ${parent.absolutePath}")
             }
         }
-        outputFile.outputStream().buffered().use { stream ->
-            stream.write(payload.toString(2).toByteArray(StandardCharsets.UTF_8))
+        snapshot.forEach { book ->
+            val bookJson = JSONObject().apply {
+                put("asin", book.asin)
+                put("title", book.title)
+                put("author", book.author)
+                put("lastAccessedDate", book.lastAccessedDate)
+                put("highlights", JSONArray().apply {
+                    book.highlights.forEach { highlight ->
+                        put(JSONObject().apply {
+                            put("highlight", highlight.highlight)
+                            put("note", highlight.note)
+                        })
+                    }
+                })
+            }
+            outputFile.appendText(bookJson.toString() + "\n", StandardCharsets.UTF_8)
         }
     }
-
-    private data class BookHighlights(
-        val asin: String,
-        val title: String,
-        val highlights: List<HighlightEntry>
-    )
 
     companion object {
         const val DEFAULT_FLUSH_THRESHOLD = 100
