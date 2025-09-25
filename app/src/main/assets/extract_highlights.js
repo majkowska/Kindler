@@ -25,16 +25,14 @@
     }
 
     const urlParams = new URLSearchParams(window.location.search);
-    const asin = urlParams.get('asin');
 
     // Select all individual annotation entries/blocks under the main annotations container
     const annotationEntries = document.querySelectorAll('div#kp-notebook-annotations > div.a-row.a-spacing-base');
     let collectedAnnotations = extractAnnotationsFromEntries(annotationEntries);
 
     if (typeof AndroidInterface !== 'undefined' && AndroidInterface.processBookHighlights) {
-        AndroidInterface.processBookHighlights(JSON.stringify(collectedAnnotations), asin);
+        AndroidInterface.processBookHighlights(JSON.stringify(collectedAnnotations));
     } else {
         console.error("AndroidInterface.processBookHighlights not found.");
-        // console.log("ASIN: " + asin + ", Highlights: " + JSON.stringify(collectedAnnotations)); // For browser debugging
     }
 })();
