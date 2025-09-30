@@ -8,26 +8,31 @@
     android:fitsSystemWindows="true"
     tools:context=".MainActivity">
 
-    <LinearLayout
+    <androidx.coordinatorlayout.widget.CoordinatorLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_height="match_parent">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/topAppBar"
-            style="@style/Widget.Material3.Toolbar"
+        <com.google.android.material.appbar.AppBarLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:theme="@style/ThemeOverlay.Material3.Dark.ActionBar"
-            app:title="@string/app_title" />
+            android:fitsSystemWindows="true">
+
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/topAppBar"
+                style="@style/Widget.Material3.Toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:theme="@style/ThemeOverlay.Material3.Dark.ActionBar"
+                app:title="@string/app_title" />
+        </com.google.android.material.appbar.AppBarLayout>
 
         <FrameLayout
             android:id="@+id/content_frame"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:padding="24dp" />
-    </LinearLayout>
+            android:layout_height="match_parent"
+            android:padding="24dp"
+            app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+    </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/nav_view"
@@ -35,6 +40,9 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:fitsSystemWindows="true"
+        android:background="?attr/colorSurface"
+        app:itemIconTint="@color/nav_drawer_item_icon_tint"
+        app:itemTextColor="@color/nav_drawer_item_text_color"
         app:menu="@menu/main_drawer" />
 
 </androidx.drawerlayout.widget.DrawerLayout>
