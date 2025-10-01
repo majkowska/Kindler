@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_import"
+            android:icon="@android:drawable/ic_input_add"
+            android:title="Import" />
+        <item
+            android:id="@+id/nav_display"
+            android:icon="@android:drawable/ic_menu_view"
+            android:title="Display"
+            android:enabled="false" />
+        <item
+            android:id="@+id/nav_export"
+            android:icon="@android:drawable/ic_menu_save"
+            android:title="Export"
+            android:enabled="false" />
+    </group>
+</menu>
