@@ -274,8 +274,8 @@ class ImportFragment : Fragment() {
                 if (highlights.isEmpty()) {
                     Log.i(
                         TAG,
-                        "No highlights found for book '$currentBook.bookTitle' " +
-                                "(ASIN: $currentBook.asin)."
+                        "No highlights found for book '${currentBook.title}' " +
+                                "(ASIN: ${currentBook.asin})."
                     )
                 } else {
                     highlights.forEach { highlightEntry ->
@@ -290,8 +290,8 @@ class ImportFragment : Fragment() {
                 parseResult.exceptionOrNull()?.let { e ->
                     Log.e(
                         TAG,
-                        "Error processing highlights for book '$currentBook.bookTitle' " +
-                                "(ASIN: $currentBook.asin): ",
+                        "Error processing highlights for book '${currentBook.title}' " +
+                                "(ASIN: ${currentBook.asin}): ",
                         e
                     )
                     // we continue to process highlights even though there's an error
