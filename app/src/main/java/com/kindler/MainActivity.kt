@@ -42,7 +42,9 @@ class MainActivity : AppCompatActivity() {
                         .commit()
                 }
                 R.id.nav_display -> {
-                    // Display fragment not implemented yet
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, DisplayFragment())
+                        .commit()
                 }
                 R.id.nav_export -> {
                     // Export fragment not implemented yet

@@ -14,6 +14,62 @@ class HighlightsFileStore(
     private val storedBooks = mutableListOf<BookEntry>()
 
     @Throws(IOException::class)
+    fun loadBooks(offset: Int = 0, limit: Int = BOOKS_PER_PAGE): List<BookEntry> {
+        if (!outputFile.exists()) {
+            return emptyList()
+        }
+
+        val allBooks = mutableListOf<BookEntry>()
+        outputFile.readLines(StandardCharsets.UTF_8).forEach { line ->
+            if (line.isNotBlank()) {
+                try {
+                    val bookJson = JSONObject(line)
+                    val highlightsArray = bookJson.getJSONArray("highlights")
+                    val highlights = mutableListOf<HighlightEntry>()
+
+                    for (i in 0 until highlightsArray.length()) {
+                        val highlightJson = highlightsArray.getJSONObject(i)
+                        highlights.add(
+                            HighlightEntry(
+                                highlight = highlightJson.getString("highlight"),
+                                note = highlightJson.getString("note")
+                            )
+                        )
+                    }
+
+                    allBooks.add(
+                        BookEntry(
+                            asin = bookJson.getString("asin"),
+                            title = bookJson.getString("title"),
+                            author = bookJson.getString("author"),
+                            lastAccessedDate = bookJson.getString("lastAccessedDate"),
+                            highlights = highlights
+                        )
+                    )
+                } catch (e: Exception) {
+                    throw IOException("Failed to parse book data from file", e)
+                }
+            }
+        }
+
+        val startIndex = offset.coerceAtLeast(0)
+        val endIndex = (offset + limit).coerceAtMost(allBooks.size)
+
+        return if (startIndex < allBooks.size) {
+            allBooks.subList(startIndex, endIndex)
+        } else {
+            emptyList()
+        }
+    }
+
+    fun getTotalBookCount(): Int {
+        if (!outputFile.exists()) {
+            return 0
+        }
+        return outputFile.readLines(StandardCharsets.UTF_8).count { it.isNotBlank() }
+    }
+
+    @Throws(IOException::class)
     fun reset() {
         storedBooks.clear()
         if (outputFile.exists() && !outputFile.delete()) {
@@ -72,5 +128,6 @@ class HighlightsFileStore(
 
     companion object {
         const val DEFAULT_FLUSH_THRESHOLD = 100
+        const val BOOKS_PER_PAGE = 100
     }
 }
