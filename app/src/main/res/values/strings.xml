@@ -2,4 +2,12 @@
     <string name="app_name">Kindler</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string name="load_more">Load More</string>
+    <string name="load_more_with_count">Load More (%1$d remaining)</string>
+    <string name="no_highlights_for_book">No highlights or notes for this book.</string>
+    <string name="no_highlights_stored">No highlights stored.\n\nPlease use the Import tab to load your Kindle highlights.</string>
+    <string name="error_loading_highlights">Error loading highlights.\n\nThe highlights file may be corrupted.</string>
+    <string name="note_prefix">Note: %1$s</string>
+    <string name="highlight_quote">\"%1$s\"</string>
+    <string name="last_accessed">Last accessed: %1$s</string>
 </resources>
