@@ -150,4 +150,124 @@ class HighlightsFileStoreTest {
             tempDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `loadBooks returns sequential pages and reports remaining data`() {
+        val tempDir = Files.createTempDirectory("highlight-store-test").toFile()
+        try {
+            val outputFile = File(tempDir, "highlights.json")
+            val store = HighlightsFileStore(outputFile)
+
+            val firstBook = BookEntry("ASIN-10", "Book Ten", "Author Ten", "2023-10-10")
+            val secondBook = BookEntry("ASIN-11", "Book Eleven", "Author Eleven", "2023-11-11")
+            val thirdBook = BookEntry("ASIN-12", "Book Twelve", "Author Twelve", "2023-12-12")
+
+            store.addBookHighlights(firstBook, listOf(HighlightEntry("Highlight 10", "Note 10")))
+            store.addBookHighlights(secondBook, listOf(HighlightEntry("Highlight 11", "Note 11")))
+            store.addBookHighlights(thirdBook, listOf(HighlightEntry("Highlight 12", "Note 12")))
+            store.flush()
+
+            val firstPage = store.loadBooks(limit = 2, fromStart = true)
+            assertEquals(
+                listOf(
+                    firstBook.copy(highlights = listOf(HighlightEntry("Highlight 10", "Note 10"))),
+                    secondBook.copy(highlights = listOf(HighlightEntry("Highlight 11", "Note 11")))
+                ),
+                firstPage.books
+            )
+            assertTrue(firstPage.hasMore)
+
+            val secondPage = store.loadBooks(limit = 2)
+            assertEquals(
+                listOf(
+                    thirdBook.copy(highlights = listOf(HighlightEntry("Highlight 12", "Note 12")))
+                ),
+                secondPage.books
+            )
+            assertFalse(secondPage.hasMore)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `loadBooks fromStart rewinds to beginning`() {
+        val tempDir = Files.createTempDirectory("highlight-store-test").toFile()
+        try {
+            val outputFile = File(tempDir, "highlights.json")
+            val store = HighlightsFileStore(outputFile)
+
+            val firstBook = BookEntry("ASIN-20", "Book Twenty", "Author Twenty", "2024-01-20")
+            val secondBook = BookEntry("ASIN-21", "Book Twenty One", "Author Twenty One", "2024-01-21")
+
+            store.addBookHighlights(firstBook, listOf(HighlightEntry("Highlight 20", "Note 20")))
+            store.addBookHighlights(secondBook, listOf(HighlightEntry("Highlight 21", "Note 21")))
+            store.flush()
+
+            val firstPage = store.loadBooks(limit = 1, fromStart = true)
+            assertEquals(
+                listOf(firstBook.copy(highlights = listOf(HighlightEntry("Highlight 20", "Note 20")))),
+                firstPage.books
+            )
+            assertTrue(firstPage.hasMore)
+
+            val secondPage = store.loadBooks(limit = 1)
+            assertEquals(
+                listOf(secondBook.copy(highlights = listOf(HighlightEntry("Highlight 21", "Note 21")))),
+                secondPage.books
+            )
+            assertFalse(secondPage.hasMore)
+
+            val restartedPage = store.loadBooks(limit = 2, fromStart = true)
+            assertEquals(
+                listOf(
+                    firstBook.copy(highlights = listOf(HighlightEntry("Highlight 20", "Note 20"))),
+                    secondBook.copy(highlights = listOf(HighlightEntry("Highlight 21", "Note 21")))
+                ),
+                restartedPage.books
+            )
+            assertFalse(restartedPage.hasMore)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `writing new highlights resets the read position`() {
+        val tempDir = Files.createTempDirectory("highlight-store-test").toFile()
+        try {
+            val outputFile = File(tempDir, "highlights.json")
+            val store = HighlightsFileStore(outputFile)
+
+            val firstBook = BookEntry("ASIN-30", "Book Thirty", "Author Thirty", "2024-02-01")
+            val secondBook = BookEntry("ASIN-31", "Book Thirty One", "Author Thirty One", "2024-02-02")
+            val thirdBook = BookEntry("ASIN-32", "Book Thirty Two", "Author Thirty Two", "2024-02-03")
+
+            store.addBookHighlights(firstBook, listOf(HighlightEntry("Highlight 30", "Note 30")))
+            store.addBookHighlights(secondBook, listOf(HighlightEntry("Highlight 31", "Note 31")))
+            store.flush()
+
+            val firstPage = store.loadBooks(limit = 1, fromStart = true)
+            assertEquals(
+                listOf(firstBook.copy(highlights = listOf(HighlightEntry("Highlight 30", "Note 30")))),
+                firstPage.books
+            )
+
+            store.addBookHighlights(thirdBook, listOf(HighlightEntry("Highlight 32", "Note 32")))
+            store.flush()
+
+            val reloaded = store.loadBooks(limit = 3)
+            assertEquals(
+                listOf(
+                    firstBook.copy(highlights = listOf(HighlightEntry("Highlight 30", "Note 30"))),
+                    secondBook.copy(highlights = listOf(HighlightEntry("Highlight 31", "Note 31"))),
+                    thirdBook.copy(highlights = listOf(HighlightEntry("Highlight 32", "Note 32")))
+                ),
+                reloaded.books
+            )
+            assertFalse(reloaded.hasMore)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
 }
