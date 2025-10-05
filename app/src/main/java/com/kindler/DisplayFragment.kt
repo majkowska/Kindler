@@ -25,8 +25,7 @@ class DisplayFragment : Fragment() {
     private lateinit var loadMoreButton: Button
     private lateinit var highlightsFileStore: HighlightsFileStore
 
-    private var currentOffset = 0
-    private var totalBooks = 0
+    private var hasMoreBooks = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -54,27 +53,32 @@ class DisplayFragment : Fragment() {
         loadInitialBooks()
     }
 
-    private fun loadInitialBooks() {
-        currentOffset = 0
-        contentLayout.removeAllViews()
-        loadBooks()
+    override fun onDestroyView() {
+        super.onDestroyView()
     }
 
-    private fun loadBooks() {
+    private fun loadInitialBooks() {
+        hasMoreBooks = false
+        contentLayout.removeAllViews()
+        loadBooks(fromStart = true)
+    }
+
+    private fun loadBooks(fromStart: Boolean = false) {
+        loadMoreButton.isEnabled = false
         try {
-            totalBooks = highlightsFileStore.getTotalBookCount()
-
-            if (totalBooks == 0) {
-                showEmptyState()
-                return
-            }
-
-            val books = highlightsFileStore.loadBooks(
-                currentOffset,
-                HighlightsFileStore.BOOKS_PER_PAGE
+            val result = highlightsFileStore.loadBooks(
+                limit = HighlightsFileStore.BOOKS_PER_PAGE,
+                fromStart = fromStart
             )
 
-            if (books.isEmpty() && currentOffset == 0) {
+            if (fromStart) {
+                contentLayout.removeAllViews()
+            }
+
+            val books = result.books
+            hasMoreBooks = result.hasMore
+
+            if (fromStart && books.isEmpty()) {
                 showEmptyState()
                 return
             }
@@ -83,25 +87,26 @@ class DisplayFragment : Fragment() {
                 addBookView(book)
             }
 
-            currentOffset += books.size
-
-            // Show or hide load more button
-            if (currentOffset < totalBooks) {
-                loadMoreButton.visibility = View.VISIBLE
-                loadMoreButton.text = getString(
-                    R.string.load_more_with_count,
-                    totalBooks - currentOffset
-                )
-            } else {
-                loadMoreButton.visibility = View.GONE
-            }
-
+            updateLoadMoreButton()
         } catch (e: IOException) {
             Log.e(TAG, "Error loading highlights", e)
             showCorruptedState()
         } catch (e: Exception) {
             Log.e(TAG, "Unexpected error loading highlights", e)
             showCorruptedState()
+        } finally {
+            loadMoreButton.isEnabled = hasMoreBooks
+        }
+    }
+
+    private fun updateLoadMoreButton() {
+        if (hasMoreBooks) {
+            loadMoreButton.visibility = View.VISIBLE
+            loadMoreButton.text = getString(R.string.load_more)
+            loadMoreButton.isEnabled = true
+        } else {
+            loadMoreButton.visibility = View.GONE
+            loadMoreButton.isEnabled = false
         }
     }
 
@@ -227,6 +232,7 @@ class DisplayFragment : Fragment() {
     }
 
     private fun showEmptyState() {
+        hasMoreBooks = false
         contentLayout.removeAllViews()
         loadMoreButton.visibility = View.GONE
 
@@ -245,6 +251,7 @@ class DisplayFragment : Fragment() {
     }
 
     private fun showCorruptedState() {
+        hasMoreBooks = false
         contentLayout.removeAllViews()
         loadMoreButton.visibility = View.GONE
 
