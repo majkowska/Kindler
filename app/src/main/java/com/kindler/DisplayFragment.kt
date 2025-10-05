@@ -7,7 +7,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import java.io.File
@@ -20,7 +19,6 @@ class DisplayFragment : Fragment() {
         private const val HIGHLIGHTS_FILE_NAME = "kindle_highlights.json"
     }
 
-    private lateinit var scrollView: ScrollView
     private lateinit var contentLayout: LinearLayout
     private lateinit var loadMoreButton: Button
     private lateinit var highlightsFileStore: HighlightsFileStore
@@ -38,7 +36,6 @@ class DisplayFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        scrollView = view.findViewById(R.id.displayScrollView)
         contentLayout = view.findViewById(R.id.contentLayout)
         loadMoreButton = view.findViewById(R.id.loadMoreButton)
 
@@ -112,12 +109,7 @@ class DisplayFragment : Fragment() {
         } else {
             loadMoreButton.visibility = View.GONE
         }
-
-        loadMoreButton.isEnabled = shouldShowLoadMore
-    }
-
-    private fun isScrolledToBottom(): Boolean {
-        return !scrollView.canScrollVertically(1)
+        loadMoreButton.isEnabled = hasMoreBooks
     }
 
     private fun addBookView(book: BookEntry) {
