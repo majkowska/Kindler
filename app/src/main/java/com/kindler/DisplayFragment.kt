@@ -42,6 +42,10 @@ class DisplayFragment : Fragment() {
         contentLayout = view.findViewById(R.id.contentLayout)
         loadMoreButton = view.findViewById(R.id.loadMoreButton)
 
+        scrollView.viewTreeObserver.addOnScrollChangedListener {
+            updateLoadMoreButton()
+        }
+
         highlightsFileStore = HighlightsFileStore(
             File(requireContext().filesDir, HIGHLIGHTS_FILE_NAME)
         )
@@ -95,19 +99,25 @@ class DisplayFragment : Fragment() {
             Log.e(TAG, "Unexpected error loading highlights", e)
             showCorruptedState()
         } finally {
-            loadMoreButton.isEnabled = hasMoreBooks
+            updateLoadMoreButton()
         }
     }
 
     private fun updateLoadMoreButton() {
-        if (hasMoreBooks) {
+        val shouldShowLoadMore = hasMoreBooks && isScrolledToBottom()
+
+        if (shouldShowLoadMore) {
             loadMoreButton.visibility = View.VISIBLE
             loadMoreButton.text = getString(R.string.load_more)
-            loadMoreButton.isEnabled = true
         } else {
             loadMoreButton.visibility = View.GONE
-            loadMoreButton.isEnabled = false
         }
+
+        loadMoreButton.isEnabled = shouldShowLoadMore
+    }
+
+    private fun isScrolledToBottom(): Boolean {
+        return !scrollView.canScrollVertically(1)
     }
 
     private fun addBookView(book: BookEntry) {
