@@ -39,6 +39,10 @@ class DisplayFragment : Fragment() {
         contentLayout = view.findViewById(R.id.contentLayout)
         loadMoreButton = view.findViewById(R.id.loadMoreButton)
 
+        scrollView.viewTreeObserver.addOnScrollChangedListener {
+            updateLoadMoreButton()
+        }
+
         highlightsFileStore = HighlightsFileStore(
             File(requireContext().filesDir, HIGHLIGHTS_FILE_NAME)
         )
@@ -97,7 +101,9 @@ class DisplayFragment : Fragment() {
     }
 
     private fun updateLoadMoreButton() {
-        if (hasMoreBooks) {
+        val shouldShowLoadMore = hasMoreBooks && isScrolledToBottom()
+
+        if (shouldShowLoadMore) {
             loadMoreButton.visibility = View.VISIBLE
             loadMoreButton.text = getString(R.string.load_more)
         } else {
