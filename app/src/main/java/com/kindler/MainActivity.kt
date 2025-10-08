@@ -47,7 +47,9 @@ class MainActivity : AppCompatActivity() {
                         .commit()
                 }
                 R.id.nav_export -> {
-                    // Export fragment not implemented yet
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, ExportFragment())
+                        .commit()
                 }
             }
             drawerLayout.closeDrawer(GravityCompat.START)
