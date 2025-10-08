@@ -10,4 +10,6 @@
     <string name="note_prefix">Note: %1$s</string>
     <string name="highlight_quote">\"%1$s\"</string>
     <string name="last_accessed">Last accessed: %1$s</string>
+    <string name="export_to_csv">Export to CSV</string>
+    <string name="export_to_keep">Export to Keep</string>
 </resources>
