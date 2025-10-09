@@ -5,6 +5,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verifySequence
 import java.io.StringWriter
+import java.util.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -181,5 +182,21 @@ class HighlightsCsvExporterTest {
             "\"ASIN-3\",\"A \"\"Quoted\"\" Title\",\"Author, The Great\",\"2024-01-05\",\"He said \"\"Hello\"\"\",\"Line1\nLine2\"",
             row
         )
+    }
+
+    @Test
+    fun buildDefaultFileName_formatsTimestampWithProvidedMillis() {
+        val highlightsStore = mockk<HighlightsFileStore>()
+        val exporter = HighlightsCsvExporter(highlightsStore)
+
+        val originalTimeZone = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            val fileName = exporter.buildDefaultFileName(1_707_000_000_000)
+
+            assertEquals("Kindler Export 2023-11-15 06:40:00.csv", fileName)
+        } finally {
+            TimeZone.setDefault(originalTimeZone)
+        }
     }
 }

@@ -2,11 +2,20 @@ package com.kindler
 
 import java.io.IOException
 import java.io.Writer
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class HighlightsCsvExporter(
     private val dataSource: HighlightsFileStore,
     private val pageSize: Int = HighlightsFileStore.BOOKS_PER_PAGE
 ) {
+
+    fun buildDefaultFileName(currentTimeMillis: Long = System.currentTimeMillis()): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        val timestamp = formatter.format(Date(currentTimeMillis))
+        return "Kindler Export $timestamp.csv"
+    }
 
     @Throws(IOException::class)
     fun hasAnyHighlights(): Boolean {

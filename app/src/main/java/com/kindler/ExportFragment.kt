@@ -14,8 +14,6 @@ import java.io.File
 import java.io.IOException
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 class ExportFragment : Fragment() {
 
@@ -78,7 +76,7 @@ class ExportFragment : Fragment() {
             return
         }
 
-        createCsvDocumentLauncher.launch(buildDefaultFileName())
+        createCsvDocumentLauncher.launch(highlightsCsvExporter.buildDefaultFileName())
     }
 
     private fun handleDocumentResult(uri: Uri?) {
@@ -108,9 +106,4 @@ class ExportFragment : Fragment() {
         }
     }
 
-    private fun buildDefaultFileName(): String {
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-        val timestamp = LocalDateTime.now().format(formatter)
-        return "Kindler Export $timestamp.csv"
-    }
 }
