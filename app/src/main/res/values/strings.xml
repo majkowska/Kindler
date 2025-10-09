@@ -12,4 +12,7 @@
     <string name="last_accessed">Last accessed: %1$s</string>
     <string name="export_to_csv">Export to CSV</string>
     <string name="export_to_keep">Export to Keep</string>
+    <string name="export_no_data">No highlights available to export.</string>
+    <string name="export_success">Highlights exported successfully.</string>
+    <string name="export_failed">Failed to export highlights.</string>
 </resources>
