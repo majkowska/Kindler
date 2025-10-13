@@ -228,7 +228,7 @@ class HighlightsCsvExporterTest {
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
             val fileName = exporter.buildDefaultFileName(1_707_000_000_000)
 
-            assertEquals("Kindler Export 2023-11-15 06:40:00.csv", fileName)
+            assertEquals("Kindler Export 2024-02-03 22:40:00.csv", fileName)
         } finally {
             TimeZone.setDefault(originalTimeZone)
         }
