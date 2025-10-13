@@ -26,7 +26,6 @@ class ImportFragment : Fragment() {
         private const val HIGHLIGHT_URL_PREFIX = "${BASE_URL}notebook?asin="
         private const val HIGHLIGHT_URL_SUFFIX = "&contentLimitState="
         private const val SIGN_IN_URL_PREFIX = "https://www.amazon.com/ap/signin"
-        private const val HIGHLIGHTS_FILE_NAME = "kindle_highlights.json"
     }
 
     private val importStateMachine = NotebookImportStateMachine()
