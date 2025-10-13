@@ -16,7 +16,6 @@ class DisplayFragment : Fragment() {
 
     companion object {
         private const val TAG = "DisplayFragment"
-        private const val HIGHLIGHTS_FILE_NAME = "kindle_highlights.json"
     }
 
     private lateinit var contentLayout: LinearLayout

@@ -3,6 +3,7 @@ package com.kindler
 import java.io.IOException
 import java.io.Writer
 import java.text.SimpleDateFormat
+import java.text.ParseException
 import java.util.Date
 import java.util.Locale
 
@@ -65,7 +66,7 @@ class HighlightsCsvExporter(
                             asin = book.asin,
                             title = book.title,
                             author = book.author,
-                            lastAccessed = book.lastAccessedDate,
+                            lastAccessed = formatLastAccessedDate(book.lastAccessedDate),
                             highlight = highlightEntry.highlight,
                             note = highlightEntry.note
                         )
@@ -77,6 +78,24 @@ class HighlightsCsvExporter(
                 break
             }
         }
+    }
+}
+
+internal fun formatLastAccessedDate(originalDate: String): String {
+    val inputFormat = SimpleDateFormat("EEEE MMMM d, yyyy", Locale.US).apply {
+        isLenient = false
+    }
+    val outputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+
+    return try {
+        val parsedDate = inputFormat.parse(originalDate)
+        if (parsedDate != null) {
+            outputFormat.format(parsedDate)
+        } else {
+            originalDate
+        }
+    } catch (exception: ParseException) {
+        originalDate
     }
 }
 

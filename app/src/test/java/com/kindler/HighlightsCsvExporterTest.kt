@@ -19,7 +19,7 @@ class HighlightsCsvExporterTest {
             asin = "ASIN-1",
             title = "Book One",
             author = "Author A",
-            lastAccessedDate = "2024-01-01",
+            lastAccessedDate = "Thursday August 7, 2025",
             highlights = listOf(
                 HighlightEntry(
                     highlight = "First highlight",
@@ -31,7 +31,7 @@ class HighlightsCsvExporterTest {
             asin = "ASIN-2",
             title = "Book Two",
             author = "Author B",
-            lastAccessedDate = "2024-01-02",
+            lastAccessedDate = "Tuesday January 2, 2024",
             highlights = listOf(
                 HighlightEntry(highlight = "Highlight one", note = "Note one"),
                 HighlightEntry(highlight = "Highlight two", note = "Note two")
@@ -51,7 +51,7 @@ class HighlightsCsvExporterTest {
 
         val expectedOutput = buildString {
             appendLine("\"Asin\",\"Title\",\"Author\",\"Last accessed\",\"Highlight\",\"Note\"")
-            appendLine("\"ASIN-1\",\"Book One\",\"Author A\",\"2024-01-01\",\"First highlight\",\"\"")
+            appendLine("\"ASIN-1\",\"Book One\",\"Author A\",\"2025-08-07\",\"First highlight\",\"\"")
             appendLine("\"ASIN-2\",\"Book Two\",\"Author B\",\"2024-01-02\",\"Highlight one\",\"Note one\"")
             appendLine("\"ASIN-2\",\"Book Two\",\"Author B\",\"2024-01-02\",\"Highlight two\",\"Note two\"")
         }
@@ -77,7 +77,7 @@ class HighlightsCsvExporterTest {
             asin = "ASIN-REAL",
             title = "Real",
             author = "Somebody",
-            lastAccessedDate = "2024-01-04",
+            lastAccessedDate = "Thursday January 4, 2024",
             highlights = listOf(HighlightEntry("Interesting", ""))
         )
 
@@ -95,6 +95,40 @@ class HighlightsCsvExporterTest {
         val expectedOutput = buildString {
             appendLine("\"Asin\",\"Title\",\"Author\",\"Last accessed\",\"Highlight\",\"Note\"")
             appendLine("\"ASIN-REAL\",\"Real\",\"Somebody\",\"2024-01-04\",\"Interesting\",\"\"")
+        }
+
+        assertEquals(expectedOutput, writer.toString())
+
+        verifySequence {
+            highlightsStore.loadBooks(HighlightsFileStore.BOOKS_PER_PAGE, true)
+        }
+        confirmVerified(highlightsStore)
+    }
+
+    @Test
+    fun exportToWriter_keepsOriginalDateWhenParsingFails() {
+        val bookWithInvalidDate = BookEntry(
+            asin = "ASIN-INVALID",
+            title = "Broken",
+            author = "Unknown",
+            lastAccessedDate = "Not a real date",
+            highlights = listOf(HighlightEntry("Highlight", ""))
+        )
+
+        val highlightsStore = mockk<HighlightsFileStore>()
+        every { highlightsStore.loadBooks(any(), any()) } returns HighlightsFileStore.LoadResult(
+            books = listOf(bookWithInvalidDate),
+            hasMore = false
+        )
+
+        val exporter = HighlightsCsvExporter(highlightsStore)
+        val writer = StringWriter()
+
+        exporter.exportToWriter(writer)
+
+        val expectedOutput = buildString {
+            appendLine("\"Asin\",\"Title\",\"Author\",\"Last accessed\",\"Highlight\",\"Note\"")
+            appendLine("\"ASIN-INVALID\",\"Broken\",\"Unknown\",\"Not a real date\",\"Highlight\",\"\"")
         }
 
         assertEquals(expectedOutput, writer.toString())
