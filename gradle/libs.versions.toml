@@ -27,6 +27,7 @@ androidx-constraintlayout = { group = "androidx.constraintlayout", name = "const
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockitoCore" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+gpsoauth = { module = "io.github.rukins:gpsoauth", version = "1.0.2" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
