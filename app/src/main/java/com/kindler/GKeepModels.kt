@@ -11,9 +11,22 @@ import kotlin.math.min
 import kotlin.random.Random
 import kotlin.random.nextULong
 
-/* ========== Exceptions (stand-ins for .exception module) ========== */
+/**
+ * Google Keep data models for notes, lists, and related metadata.
+ *
+ * This file contains the domain models for Google Keep synchronization,
+ * including note types, list items, annotations, timestamps, and settings.
+ */
+
+/* ========== Constants ========== */
 
 private const val TAG = "GKeepModels"
+private const val SORT_MIN = 1_000_000_000L
+private const val SORT_MAX = 9_999_999_999L
+private const val ALPHANUMERIC_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789"
+private const val RANDOM_ID_LENGTH = 12
+
+/* ========== Exceptions (stand-ins for .exception module) ========== */
 
 class MergeException(message: String = "Merge conflict") : RuntimeException(message)
 
@@ -38,7 +51,10 @@ enum class BlobType(val wire: String) {
     Image("IMAGE"),
     Drawing("DRAWING");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown BlobType: $s")
+    }
 }
 
 enum class ColorValue(val wire: String) {
@@ -55,7 +71,10 @@ enum class ColorValue(val wire: String) {
     Brown("BROWN"),
     Gray("GRAY");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown ColorValue: $s")
+    }
 }
 
 enum class CategoryValue(val wire: String) {
@@ -68,41 +87,63 @@ enum class CategoryValue(val wire: String) {
     Travel("TRAVEL"),
     TV("TV");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown CategoryValue: $s")
+    }
 }
 
 enum class NewListItemPlacementValue(val wire: String) {
     Top("TOP"), Bottom("BOTTOM");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown NewListItemPlacementValue: $s")
+    }
 }
 
 enum class GraveyardStateValue(val wire: String) {
     Expanded("EXPANDED"), Collapsed("COLLAPSED");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown GraveyardStateValue: $s")
+    }
 }
 
 enum class CheckedListItemsPolicyValue(val wire: String) {
     Default("DEFAULT"), Graveyard("GRAVEYARD");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown CheckedListItemsPolicyValue: $s")
+    }
 }
 
 enum class ShareRequestValue(val wire: String) {
     Add("WR"), Remove("RM");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown ShareRequestValue: $s")
+    }
 }
 
 enum class RoleValue(val wire: String) {
     Owner("O"), User("W");
 
-    companion object { fun fromWire(s: String) = entries.first { it.wire == s } }
+    companion object {
+        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+            ?: throw InvalidException("Unknown RoleValue: $s")
+    }
 }
 
 /* ========== Element base ========== */
 
+/**
+ * Base class for all Google Keep data model elements.
+ * Provides dirty tracking for change detection and serialization support.
+ */
 open class Element {
     protected var dirtyFlag: Boolean = false
     open fun load(raw: Map<*, *>) { dirtyFlag = (raw["_dirty"] as? Boolean) == true }
@@ -116,6 +157,9 @@ open class Element {
 
 /* ========== Annotations ========== */
 
+/**
+ * Base class for note annotations (web links, categories, task assists).
+ */
 sealed class Annotation : Element() {
     var id: String? = genId()
     override fun load(raw: Map<*, *>) {
@@ -300,6 +344,9 @@ class NodeAnnotations : Element() {
 
 /* ========== Timestamp helpers ========== */
 
+/**
+ * Manages creation, modification, and deletion timestamps for nodes.
+ */
 class NodeTimestamps(createTime: Long? = null) : Element() {
     var created: ZonedDateTime = (createTime?.let { fromEpoch(it) } ?: now())
         set(v) { field = v; dirtyFlag = true }
@@ -351,14 +398,21 @@ class NodeSettings : Element() {
         set(v) { field = v; dirtyFlag = true }
     var graveyardState: GraveyardStateValue = GraveyardStateValue.Collapsed
         set(v) { field = v; dirtyFlag = true }
-    var checkedListItemsPolicy: CheckedListItemsPolicyValue = CheckedListItemsPolicyValue.Graveyard
+    var checkedListItemsPolicy: CheckedListItemsPolicyValue =
+        CheckedListItemsPolicyValue.Graveyard
         set(v) { field = v; dirtyFlag = true }
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        (raw["newListItemPlacement"] as? String)?.let { newListItemPlacement = NewListItemPlacementValue.fromWire(it) }
-        (raw["graveyardState"] as? String)?.let { graveyardState = GraveyardStateValue.fromWire(it) }
-        (raw["checkedListItemsPolicy"] as? String)?.let { checkedListItemsPolicy = CheckedListItemsPolicyValue.fromWire(it) }
+        (raw["newListItemPlacement"] as? String)?.let {
+            newListItemPlacement = NewListItemPlacementValue.fromWire(it)
+        }
+        (raw["graveyardState"] as? String)?.let {
+            graveyardState = GraveyardStateValue.fromWire(it)
+        }
+        (raw["checkedListItemsPolicy"] as? String)?.let {
+            checkedListItemsPolicy = CheckedListItemsPolicyValue.fromWire(it)
+        }
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -387,12 +441,18 @@ class NodeCollaborators : Element() {
     }
 
     fun all(): List<String> = collaborators.filter { (_, v) ->
-        v is RoleValue && (v == RoleValue.Owner || v == RoleValue.User) || v == ShareRequestValue.Add
+        val isRole = v is RoleValue && (v == RoleValue.Owner || v == RoleValue.User)
+        isRole || v == ShareRequestValue.Add
     }.keys.toList()
 
     fun load(collaboratorsRaw: List<Map<*, *>>, requestsRawWithFlag: MutableList<Any?>) {
-        dirtyFlag = if (requestsRawWithFlag.isNotEmpty() && requestsRawWithFlag.last() is Boolean)
-            (requestsRawWithFlag.removeAt(requestsRawWithFlag.lastIndex) as Boolean) else false
+        dirtyFlag = if (requestsRawWithFlag.isNotEmpty() &&
+            requestsRawWithFlag.last() is Boolean
+        ) {
+            requestsRawWithFlag.removeAt(requestsRawWithFlag.lastIndex) as Boolean
+        } else {
+            false
+        }
 
         collaborators.clear()
 
@@ -410,13 +470,23 @@ class NodeCollaborators : Element() {
         }
     }
 
-    fun saveNodeCollaborators(clean: Boolean): Pair<List<Map<String, Any?>>, MutableList<Any?>> {
+    fun saveNodeCollaborators(
+        clean: Boolean
+    ): Pair<List<Map<String, Any?>>, MutableList<Any?>> {
         val collabs = mutableListOf<Map<String, Any?>>()
         val requests = mutableListOf<Any?>()
         collaborators.forEach { (email, action) ->
             when (action) {
-                is ShareRequestValue -> requests += mapOf("email" to email, "type" to action.wire)
-                is RoleValue -> collabs += mapOf("email" to email, "role" to action.wire, "auxiliary_type" to "None")
+                is ShareRequestValue -> {
+                    requests += mapOf("email" to email, "type" to action.wire)
+                }
+                is RoleValue -> {
+                    collabs += mapOf(
+                        "email" to email,
+                        "role" to action.wire,
+                        "auxiliary_type" to "None"
+                    )
+                }
             }
         }
         if (!clean) requests += dirtyFlag else dirtyFlag = false
@@ -444,7 +514,8 @@ class Label : Element() {
         id = raw["mainId"] as? String ?: id
         name = raw["name"] as? String ?: name
         (raw["timestamps"] as? Map<*, *>)?.let { timestamps.load(it) }
-        merged = (raw["lastMerged"] as? String)?.let { NodeTimestamps.strToDt(it) } ?: NodeTimestamps.zero()
+        merged = (raw["lastMerged"] as? String)?.let { NodeTimestamps.strToDt(it) }
+            ?: NodeTimestamps.zero()
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -460,8 +531,10 @@ class Label : Element() {
 
     companion object {
         private fun generateId(epochSec: Long): String {
-            val rand12 = (1..12).joinToString("") { "abcdefghijklmnopqrstuvwxyz0123456789".random().toString() }
-            return "tag.$rand12.${epochSec.toString(16)}"
+            val randChars = (1..RANDOM_ID_LENGTH).joinToString("") {
+                ALPHANUMERIC_CHARS.random().toString()
+            }
+            return "tag.$randChars.${epochSec.toString(16)}"
         }
     }
 }
@@ -476,7 +549,11 @@ class NodeLabels : Element() {
             is List<*> -> raw.toMutableList()
             else -> mutableListOf()
         }
-        dirtyFlag = if (arr.isNotEmpty() && arr.last() is Boolean) (arr.removeAt(arr.lastIndex) as Boolean) else false
+        dirtyFlag = if (arr.isNotEmpty() && arr.last() is Boolean) {
+            arr.removeAt(arr.lastIndex) as Boolean
+        } else {
+            false
+        }
         labels.clear()
         arr.forEach { m ->
             val mm = m as? Map<*, *> ?: return@forEach
@@ -488,9 +565,10 @@ class NodeLabels : Element() {
     fun saveWire(clean: Boolean = true): MutableList<Any?> {
         val now = NodeTimestamps.now()
         val ret = labels.map { (id, label) ->
+            val deletedTime = if (label == null) now else NodeTimestamps.zero()
             mapOf(
                 "labelId" to id,
-                "deleted" to NodeTimestamps.dtToStr(if (label == null) now else NodeTimestamps.zero())
+                "deleted" to NodeTimestamps.dtToStr(deletedTime)
             )
         }.toMutableList<Any?>()
         if (!clean) ret += dirtyFlag else dirtyFlag = false
@@ -505,6 +583,9 @@ class NodeLabels : Element() {
 
 /* ========== Node hierarchy ========== */
 
+/**
+ * Mixin interface for timestamp management in nodes.
+ */
 interface TimestampsMixin {
     val timestamps: NodeTimestamps
     var dirtyFlagForMixin: Boolean
@@ -518,13 +599,21 @@ interface TimestampsMixin {
 
     var trashed: Boolean
         get() = timestamps.trashed?.isAfter(NodeTimestamps.zero()) == true
-        set(value) { timestamps.trashed = if (value) NodeTimestamps.now() else NodeTimestamps.zero() }
+        set(value) {
+            timestamps.trashed = if (value) NodeTimestamps.now() else NodeTimestamps.zero()
+        }
 
     var deleted: Boolean
         get() = timestamps.deleted?.isAfter(NodeTimestamps.zero()) == true
-        set(value) { timestamps.deleted = if (value) NodeTimestamps.now() else null }
+        set(value) {
+            timestamps.deleted = if (value) NodeTimestamps.now() else null
+        }
 }
 
+/**
+ * Base class for all Google Keep nodes (notes, lists, list items, blobs).
+ * Provides hierarchical structure with parent-child relationships.
+ */
 open class Node(
     idString: String? = null,
     nodeType: NodeType? = null,
@@ -533,7 +622,7 @@ open class Node(
     var id: String = idString ?: generateId(Instant.now().toEpochMilli())
     var serverId: String? = null
     var type: NodeType? = nodeType
-    var sort: Long = Random.nextLong(1_000_000_000L, 9_999_999_999L)
+    var sort: Long = Random.nextLong(SORT_MIN, SORT_MAX)
         set(v) { field = v; touch() }
     private var version: Long? = null
     protected var textString: String = ""
@@ -612,7 +701,8 @@ open class Node(
     val isNew: Boolean get() = serverId == null
 
     override val dirty: Boolean
-        get() = super.dirty || timestamps.dirty || annotations.dirty || settings.dirty || children.any { it.dirty }
+        get() = super.dirty || timestamps.dirty || annotations.dirty ||
+            settings.dirty || children.any { it.dirty }
 
     companion object {
         private fun generateId(ms: Long): String {
@@ -630,6 +720,10 @@ class Root : Node(idString = RootId.ID) {
 
 /* ========== Top-level nodes ========== */
 
+/**
+ * Base class for top-level note types (Note and ListNode).
+ * Provides color, archiving, pinning, labels, and collaboration features.
+ */
 abstract class TopLevelNode(type: NodeType) : Node(nodeType = type, parentId = RootId.ID) {
     var color: ColorValue = ColorValue.White
         set(v) { field = v; touch(true) }
@@ -690,6 +784,9 @@ abstract class TopLevelNode(type: NodeType) : Node(nodeType = type, parentId = R
     val url: String get() = "https://keep.google.com/u/0/#${type!!.wire}/$id"
 }
 
+/**
+ * Represents a standard Google Keep note with title and text content.
+ */
 class Note : TopLevelNode(NodeType.Note) {
     private fun textItem(): ListItem? = children.firstOrNull { it is ListItem } as? ListItem
 
@@ -705,14 +802,24 @@ class Note : TopLevelNode(NodeType.Note) {
     override fun toString(): String = "$title\n$text"
 }
 
+/**
+ * Represents a Google Keep checklist with checkable list items.
+ * Supports item ordering, checked/unchecked filtering, and item indentation.
+ */
 class ListNode : TopLevelNode(NodeType.List) {
     companion object {
         const val SORT_DELTA = 10_000
         fun sortedItems(items: List<ListItem>): List<ListItem> {
-            fun keyFor(x: ListItem): List<Long> =
-                if (x.indented) listOf(x.parentItem!!.sort, x.sort) else listOf(x.sort)
-            return items.sortedWith(compareByDescending<ListItem> { keyFor(it)[0] }
-                .thenByDescending { keyFor(it).getOrNull(1) ?: Long.MIN_VALUE })
+            fun keyFor(x: ListItem): List<Long> {
+                return if (x.indented) {
+                    listOf(x.parentItem!!.sort, x.sort)
+                } else {
+                    listOf(x.sort)
+                }
+            }
+            val comparator = compareByDescending<ListItem> { keyFor(it)[0] }
+                .thenByDescending { keyFor(it).getOrNull(1) ?: Long.MIN_VALUE }
+            return items.sortedWith(comparator)
         }
     }
 
@@ -746,14 +853,24 @@ class ListNode : TopLevelNode(NodeType.List) {
     override val text: String
         get() = items.joinToString("\n") { it.toString() }
 
-    fun sortItems(key: (ListItem) -> Comparable<*> = { it.text }, reverse: Boolean = false) {
-        val sorted = filterItems(null).sortedWith(compareBy<ListItem> { key(it) }.let { if (reverse) it.reversed() else it })
-        var sortVal = Random.nextLong(1_000_000_000L, 9_999_999_999L)
-        for (n in sorted) { n.sort = sortVal; sortVal -= SORT_DELTA }
+    fun sortItems(
+        key: (ListItem) -> Comparable<*> = { it.text },
+        reverse: Boolean = false
+    ) {
+        val comparator = compareBy<ListItem> { key(it) }
+            .let { if (reverse) it.reversed() else it }
+        val sorted = filterItems(null).sortedWith(comparator)
+        var sortVal = Random.nextLong(SORT_MIN, SORT_MAX)
+        for (n in sorted) {
+            n.sort = sortVal
+            sortVal -= SORT_DELTA
+        }
     }
 
-    private fun filterItems(checked: Boolean?): List<ListItem> = children.filterIsInstance<ListItem>()
-        .filter { !it.deleted && (checked == null || it.checked == checked) }
+    private fun filterItems(checked: Boolean?): List<ListItem> {
+        return children.filterIsInstance<ListItem>()
+            .filter { !it.deleted && (checked == null || it.checked == checked) }
+    }
 
     val items: List<ListItem> get() = sortedItems(filterItems(null))
     val checkedItems: List<ListItem> get() = sortedItems(filterItems(true))
@@ -764,6 +881,10 @@ class ListNode : TopLevelNode(NodeType.List) {
 
 /* ========== ListItem ========== */
 
+/**
+ * Represents a single item in a Google Keep checklist.
+ * Supports checked/unchecked state, indentation, and sub-items.
+ */
 class ListItem(
     parentId: String? = null,
     val parentServerId: String? = null,
