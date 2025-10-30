@@ -14,5 +14,6 @@
 .cxx
 local.properties
 CLAUDE.md
+AGENTS.md
 .idea/deviceManager.xml
 node_modules/
