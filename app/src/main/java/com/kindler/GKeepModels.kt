@@ -10,6 +10,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
 import kotlin.random.nextULong
+import kotlin.reflect.KProperty
 
 /**
  * Google Keep data models for notes, lists, and related metadata.
@@ -152,7 +153,30 @@ open class Element {
         if (!clean) ret["_dirty"] = dirtyFlag else dirtyFlag = false
         return ret
     }
+    protected fun <T> dirtyProperty(
+        initialValue: T,
+        onChange: () -> Unit = { dirtyFlag = true }
+    ): DirtyDelegate<T> = DirtyDelegate(initialValue, onChange)
     open val dirty: Boolean get() = dirtyFlag
+}
+
+class DirtyDelegate<T>(
+    initialValue: T,
+    private val onChange: () -> Unit
+) {
+    private var value: T = initialValue
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T = value
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
+        if (value == newValue) return
+        value = newValue
+        onChange()
+    }
+
+    fun setRaw(newValue: T) {
+        value = newValue
+    }
 }
 
 /* ========== Annotations ========== */
@@ -176,25 +200,29 @@ sealed class Annotation : Element() {
 }
 
 class WebLink : Annotation() {
-    var title: String? = null
-        set(v) { field = v; dirtyFlag = true }
-    var url: String = ""
-        set(v) { field = v; dirtyFlag = true }
-    var imageUrl: String? = null
-        set(v) { field = v; dirtyFlag = true }
-    var provenanceUrl: String = ""
-        set(v) { field = v; dirtyFlag = true }
-    var description: String? = null
-        set(v) { field = v; dirtyFlag = true }
+    private val titleDelegate = dirtyProperty<String?>(null)
+    var title: String? by titleDelegate
+
+    private val urlDelegate = dirtyProperty("")
+    var url: String by urlDelegate
+
+    private val imageUrlDelegate = dirtyProperty<String?>(null)
+    var imageUrl: String? by imageUrlDelegate
+
+    private val provenanceUrlDelegate = dirtyProperty("")
+    var provenanceUrl: String by provenanceUrlDelegate
+
+    private val descriptionDelegate = dirtyProperty<String?>(null)
+    var description: String? by descriptionDelegate
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
         val wl = raw["webLink"] as? Map<*, *> ?: return
-        title = wl["title"] as? String ?: title
-        url = wl["url"] as? String ?: url
-        imageUrl = wl["imageUrl"] as? String ?: imageUrl
-        provenanceUrl = wl["provenanceUrl"] as? String ?: provenanceUrl
-        description = wl["description"] as? String ?: description
+        (wl["title"] as? String)?.let { titleDelegate.setRaw(it) }
+        (wl["url"] as? String)?.let { urlDelegate.setRaw(it) }
+        (wl["imageUrl"] as? String)?.let { imageUrlDelegate.setRaw(it) }
+        (wl["provenanceUrl"] as? String)?.let { provenanceUrlDelegate.setRaw(it) }
+        (wl["description"] as? String)?.let { descriptionDelegate.setRaw(it) }
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -209,13 +237,13 @@ class WebLink : Annotation() {
 }
 
 class Category : Annotation() {
-    var category: CategoryValue? = null
-        set(v) { field = v; dirtyFlag = true }
+    private val categoryDelegate = dirtyProperty<CategoryValue?>(null)
+    var category: CategoryValue? by categoryDelegate
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
         val tc = raw["topicCategory"] as? Map<*, *> ?: return
-        (tc["category"] as? String)?.let { category = CategoryValue.fromWire(it) }
+        (tc["category"] as? String)?.let { categoryDelegate.setRaw(CategoryValue.fromWire(it)) }
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -224,12 +252,12 @@ class Category : Annotation() {
 }
 
 class TaskAssist : Annotation() {
-    var suggest: String? = null
-        set(v) { field = v; dirtyFlag = true }
+    private val suggestDelegate = dirtyProperty<String?>(null)
+    var suggest: String? by suggestDelegate
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        suggest = (raw["taskAssist"] as? Map<*, *>)?.get("suggestType") as? String
+        suggestDelegate.setRaw((raw["taskAssist"] as? Map<*, *>)?.get("suggestType") as? String)
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -348,24 +376,30 @@ class NodeAnnotations : Element() {
  * Manages creation, modification, and deletion timestamps for nodes.
  */
 class NodeTimestamps(createTime: Long? = null) : Element() {
-    var created: ZonedDateTime = (createTime?.let { fromEpoch(it) } ?: now())
-        set(v) { field = v; dirtyFlag = true }
-    var deleted: ZonedDateTime? = null
-        set(v) { field = v; dirtyFlag = true }
-    var trashed: ZonedDateTime? = null
-        set(v) { field = v; dirtyFlag = true }
-    var updated: ZonedDateTime = (createTime?.let { fromEpoch(it) } ?: now())
-        set(v) { field = v; dirtyFlag = true }
-    var edited: ZonedDateTime? = (createTime?.let { fromEpoch(it) } ?: now())
-        set(v) { field = v; dirtyFlag = true }
+    private val baseTime = createTime?.let { fromEpoch(it) } ?: now()
+
+    private val createdDelegate = dirtyProperty(baseTime)
+    var created: ZonedDateTime by createdDelegate
+
+    private val deletedDelegate = dirtyProperty<ZonedDateTime?>(null)
+    var deleted: ZonedDateTime? by deletedDelegate
+
+    private val trashedDelegate = dirtyProperty<ZonedDateTime?>(null)
+    var trashed: ZonedDateTime? by trashedDelegate
+
+    private val updatedDelegate = dirtyProperty(baseTime)
+    var updated: ZonedDateTime by updatedDelegate
+
+    private val editedDelegate = dirtyProperty<ZonedDateTime?>(baseTime)
+    var edited: ZonedDateTime? by editedDelegate
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        (raw["created"] as? String)?.let { created = strToDt(it) }
-        deleted = (raw["deleted"] as? String)?.let { strToDt(it) }
-        trashed = (raw["trashed"] as? String)?.let { strToDt(it) }
-        (raw["updated"] as? String)?.let { updated = strToDt(it) }
-        edited = (raw["userEdited"] as? String)?.let { strToDt(it) }
+        (raw["created"] as? String)?.let { createdDelegate.setRaw(strToDt(it)) }
+        deletedDelegate.setRaw((raw["deleted"] as? String)?.let { strToDt(it) })
+        trashedDelegate.setRaw((raw["trashed"] as? String)?.let { strToDt(it) })
+        (raw["updated"] as? String)?.let { updatedDelegate.setRaw(strToDt(it)) }
+        editedDelegate.setRaw((raw["userEdited"] as? String)?.let { strToDt(it) })
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -394,24 +428,27 @@ class NodeTimestamps(createTime: Long? = null) : Element() {
 /* ========== Settings, Collaborators, Labels ========== */
 
 class NodeSettings : Element() {
-    var newListItemPlacement: NewListItemPlacementValue = NewListItemPlacementValue.Bottom
-        set(v) { field = v; dirtyFlag = true }
-    var graveyardState: GraveyardStateValue = GraveyardStateValue.Collapsed
-        set(v) { field = v; dirtyFlag = true }
-    var checkedListItemsPolicy: CheckedListItemsPolicyValue =
-        CheckedListItemsPolicyValue.Graveyard
-        set(v) { field = v; dirtyFlag = true }
+    private val newListPlacementDelegate =
+        dirtyProperty(NewListItemPlacementValue.Bottom)
+    var newListItemPlacement: NewListItemPlacementValue by newListPlacementDelegate
+
+    private val graveyardStateDelegate = dirtyProperty(GraveyardStateValue.Collapsed)
+    var graveyardState: GraveyardStateValue by graveyardStateDelegate
+
+    private val checkedItemsPolicyDelegate =
+        dirtyProperty(CheckedListItemsPolicyValue.Graveyard)
+    var checkedListItemsPolicy: CheckedListItemsPolicyValue by checkedItemsPolicyDelegate
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
         (raw["newListItemPlacement"] as? String)?.let {
-            newListItemPlacement = NewListItemPlacementValue.fromWire(it)
+            newListPlacementDelegate.setRaw(NewListItemPlacementValue.fromWire(it))
         }
         (raw["graveyardState"] as? String)?.let {
-            graveyardState = GraveyardStateValue.fromWire(it)
+            graveyardStateDelegate.setRaw(GraveyardStateValue.fromWire(it))
         }
         (raw["checkedListItemsPolicy"] as? String)?.let {
-            checkedListItemsPolicy = CheckedListItemsPolicyValue.fromWire(it)
+            checkedItemsPolicyDelegate.setRaw(CheckedListItemsPolicyValue.fromWire(it))
         }
     }
 
@@ -496,11 +533,14 @@ class NodeCollaborators : Element() {
 
 class Label : Element() {
     var id: String = generateId(Instant.now().epochSecond)
-    var name: String = ""
-        set(v) { field = v; touch(true) }
+
+    private val nameDelegate = dirtyProperty("", ::touchEdited)
+    var name: String by nameDelegate
+
     val timestamps = NodeTimestamps(Instant.now().epochSecond)
-    var merged: ZonedDateTime = NodeTimestamps.zero()
-        set(v) { field = v; touch() }
+
+    private val mergedDelegate = dirtyProperty(NodeTimestamps.zero(), ::touchUnedited)
+    var merged: ZonedDateTime by mergedDelegate
 
     private fun touch(edited: Boolean = false) {
         dirtyFlag = true
@@ -509,13 +549,16 @@ class Label : Element() {
         if (edited) timestamps.edited = dt
     }
 
+    private fun touchEdited() = touch(true)
+    private fun touchUnedited() = touch()
+
     override fun load(raw: Map<*, *>) {
         super.load(raw)
         id = raw["mainId"] as? String ?: id
-        name = raw["name"] as? String ?: name
+        (raw["name"] as? String)?.let { nameDelegate.setRaw(it) }
         (raw["timestamps"] as? Map<*, *>)?.let { timestamps.load(it) }
-        merged = (raw["lastMerged"] as? String)?.let { NodeTimestamps.strToDt(it) }
-            ?: NodeTimestamps.zero()
+        mergedDelegate.setRaw((raw["lastMerged"] as? String)?.let { NodeTimestamps.strToDt(it) }
+            ?: NodeTimestamps.zero())
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -622,8 +665,8 @@ open class Node(
     var id: String = idString ?: generateId(Instant.now().toEpochMilli())
     var serverId: String? = null
     var type: NodeType? = nodeType
-    var sort: Long = Random.nextLong(SORT_MIN, SORT_MAX)
-        set(v) { field = v; touch() }
+    private val sortDelegate = dirtyProperty(Random.nextLong(SORT_MIN, SORT_MAX)) { touch() }
+    var sort: Long by sortDelegate
     private var version: Long? = null
     protected var textString: String = ""
     private val _children: MutableMap<String, Node> = linkedMapOf()
@@ -632,6 +675,12 @@ open class Node(
     val annotations = NodeAnnotations()
     var parent: Node? = null
     var moved: Boolean = false
+
+    private fun parseSortValue(value: Any?): Long? = when (value) {
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull()
+        else -> null
+    }
 
     override var dirtyFlagForMixin: Boolean
         get() = dirtyFlag
@@ -647,7 +696,7 @@ open class Node(
         id = raw["id"] as? String ?: id
         serverId = raw["serverId"] as? String ?: serverId
         parentId = raw["parentId"] as? String
-        sort = (raw["sortValue"] as? Number)?.toLong() ?: sort
+        parseSortValue(raw["sortValue"])?.let { sortDelegate.setRaw(it) }
         version = (raw["baseVersion"] as? Number)?.toLong() ?: version
         textString = (raw["text"] as? String) ?: textString
         (raw["timestamps"] as? Map<*, *>)?.let { timestamps.load(it) }
@@ -725,24 +774,28 @@ class Root : Node(idString = RootId.ID) {
  * Provides color, archiving, pinning, labels, and collaboration features.
  */
 abstract class TopLevelNode(type: NodeType) : Node(nodeType = type, parentId = RootId.ID) {
-    var color: ColorValue = ColorValue.White
-        set(v) { field = v; touch(true) }
-    var archived: Boolean = false
-        set(v) { field = v; touch() }
-    var pinned: Boolean = false
-        set(v) { field = v; touch() }
-    var title: String = ""
-        set(v) { field = v; touch(true) }
+    private val colorDelegate = dirtyProperty(ColorValue.White) { touch(true) }
+    var color: ColorValue by colorDelegate
+
+    private val archivedDelegate = dirtyProperty(false) { touch() }
+    var archived: Boolean by archivedDelegate
+
+    private val pinnedDelegate = dirtyProperty(false) { touch() }
+    var pinned: Boolean by pinnedDelegate
+
+    private val titleDelegate = dirtyProperty("") { touch(true) }
+    var title: String by titleDelegate
 
     val labels = NodeLabels()
     val collaborators = NodeCollaborators()
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        color = (raw["color"] as? String)?.let { ColorValue.fromWire(it) } ?: ColorValue.White
-        archived = raw["isArchived"] as? Boolean ?: false
-        pinned = raw["isPinned"] as? Boolean ?: false
-        title = raw["title"] as? String ?: ""
+        colorDelegate.setRaw((raw["color"] as? String)?.let { ColorValue.fromWire(it) }
+            ?: ColorValue.White)
+        archivedDelegate.setRaw(raw["isArchived"] as? Boolean ?: false)
+        pinnedDelegate.setRaw(raw["isPinned"] as? Boolean ?: false)
+        titleDelegate.setRaw(raw["title"] as? String ?: "")
         labels.load(raw["labelIds"])
 
         val roleInfo: List<Map<*, *>> =
@@ -896,14 +949,14 @@ class ListItem(
         private set
     var prevSuperListItemId: String? = null
         private set
-    var checked: Boolean = false
-        set(v) { field = v; touch(true) }
+    private val checkedDelegate = dirtyProperty(false) { touch(true) }
+    var checked: Boolean by checkedDelegate
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
         prevSuperListItemId = superListItemId
         superListItemId = raw["superListItemId"] as? String
-        checked = raw["checked"] as? Boolean ?: false
+        checkedDelegate.setRaw(raw["checked"] as? Boolean ?: false)
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
