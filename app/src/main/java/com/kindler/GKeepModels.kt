@@ -5,9 +5,12 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.time.temporal.ChronoField
 import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToLong
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.reflect.KProperty
@@ -26,12 +29,15 @@ private const val SORT_MIN = 1_000_000_000L
 private const val SORT_MAX = 9_999_999_999L
 private const val ALPHANUMERIC_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789"
 private const val RANDOM_ID_LENGTH = 12
+private const val DEBUG_LOGGING = false
 
 /* ========== Exceptions (stand-ins for .exception module) ========== */
 
 class MergeException(message: String = "Merge conflict") : RuntimeException(message)
 
 class InvalidException(message: String) : RuntimeException(message)
+
+private fun currentEpochSeconds(): Double = System.currentTimeMillis() / 1000.0
 
 /* ========== Enums ========== */
 
@@ -42,7 +48,8 @@ enum class NodeType(val wire: String) {
     Blob("BLOB");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromWireOrNull(s: String): NodeType? = entries.firstOrNull { it.wire == s }
+        fun fromWire(s: String) = fromWireOrNull(s)
             ?: throw InvalidException("Unknown NodeType: $s")
     }
 }
@@ -53,7 +60,8 @@ enum class BlobType(val wire: String) {
     Drawing("DRAWING");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromWireOrNull(s: String): BlobType? = entries.firstOrNull { it.wire == s }
+        fun fromWire(s: String) = fromWireOrNull(s)
             ?: throw InvalidException("Unknown BlobType: $s")
     }
 }
@@ -278,7 +286,7 @@ class Context : Annotation() {
         for ((k, v) in ctx) {
             val key = k as? String ?: continue
             val vMap = v as? Map<*, *> ?: continue
-            val ann = NodeAnnotations.fromJson(vMap)
+            val ann = NodeAnnotations.fromJson(mapOf(key to vMap))
             if (ann != null) entries[key] = ann
         }
     }
@@ -357,13 +365,19 @@ class NodeAnnotations : Element() {
 
     companion object {
         fun fromJson(raw: Map<*, *>): Annotation? {
-            return when {
+            val annotation = when {
                 "webLink" in raw -> WebLink()
                 "topicCategory" in raw -> Category()
                 "taskAssist" in raw -> TaskAssist()
                 "context" in raw -> Context()
                 else -> null
-            }?.apply { load(raw) }
+            }
+            if (annotation == null) {
+                Log.w(TAG, "Unknown annotation type: ${raw.keys}")
+                return null
+            }
+            annotation.load(raw)
+            return annotation
         }
 
         internal fun wrapSave(a: Annotation, clean: Boolean): Map<String, Any?> = a.save(clean)
@@ -375,7 +389,7 @@ class NodeAnnotations : Element() {
 /**
  * Manages creation, modification, and deletion timestamps for nodes.
  */
-class NodeTimestamps(createTime: Long? = null) : Element() {
+class NodeTimestamps(createTime: Double? = null) : Element() {
     private val baseTime = createTime?.let { fromEpoch(it) } ?: now()
 
     private val createdDelegate = dirtyProperty(baseTime)
@@ -412,16 +426,24 @@ class NodeTimestamps(createTime: Long? = null) : Element() {
     }
 
     companion object {
-        private val FMT: DateTimeFormatter =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSX")
+        private val FMT: DateTimeFormatter = DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+            .appendLiteral('.')
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 6, 6, false)
+            .appendLiteral('Z')
+            .toFormatter()
+            .withZone(ZoneOffset.UTC)
 
         fun strToDt(s: String): ZonedDateTime = ZonedDateTime.parse(s, FMT)
         fun dtToStr(dt: ZonedDateTime): String = dt.format(FMT)
-        fun fromEpoch(sec: Long): ZonedDateTime =
-            Instant.ofEpochSecond(sec).atZone(ZoneOffset.UTC)
+        fun fromEpoch(sec: Double): ZonedDateTime {
+            val seconds = sec.toLong()
+            val nanos = ((sec - seconds) * 1_000_000_000).roundToLong()
+            return Instant.ofEpochSecond(seconds, nanos).atZone(ZoneOffset.UTC)
+        }
         fun now(): ZonedDateTime = ZonedDateTime.now(ZoneOffset.UTC)
-        fun zero(): ZonedDateTime = Instant.ofEpochSecond(0).atZone(ZoneOffset.UTC)
-        fun intToStr(sec: Long): String = dtToStr(fromEpoch(sec))
+        fun zero(): ZonedDateTime = fromEpoch(0.0)
+        fun intToStr(sec: Long): String = dtToStr(fromEpoch(sec.toDouble()))
     }
 }
 
@@ -537,7 +559,7 @@ class Label : Element() {
     private val nameDelegate = dirtyProperty("", ::touchEdited)
     var name: String by nameDelegate
 
-    val timestamps = NodeTimestamps(Instant.now().epochSecond)
+    val timestamps = NodeTimestamps(currentEpochSeconds())
 
     private val mergedDelegate = dirtyProperty(NodeTimestamps.zero(), ::touchUnedited)
     var merged: ZonedDateTime by mergedDelegate
@@ -670,7 +692,7 @@ open class Node(
     private var version: Long? = null
     protected var textString: String = ""
     private val _children: MutableMap<String, Node> = linkedMapOf()
-    override val timestamps: NodeTimestamps = NodeTimestamps(Instant.now().epochSecond)
+    override val timestamps: NodeTimestamps = NodeTimestamps(currentEpochSeconds())
     val settings = NodeSettings()
     val annotations = NodeAnnotations()
     var parent: Node? = null
@@ -1140,7 +1162,15 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
         fun fromJson(raw: Map<*, *>?): NodeBlob? {
             raw ?: return null
             val t = raw["type"] as? String ?: return null
-            return when (BlobType.fromWire(t)) {
+            val blobType = BlobType.fromWireOrNull(t)
+            if (blobType == null) {
+                Log.w(TAG, "Unknown blob type: $t")
+                if (DEBUG_LOGGING) {
+                    Log.d(TAG, "Skipping blob payload: $raw")
+                }
+                return null
+            }
+            return when (blobType) {
                 BlobType.Audio -> NodeAudio()
                 BlobType.Image -> NodeImage()
                 BlobType.Drawing -> NodeDrawing()
@@ -1153,7 +1183,15 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
 
 fun nodeFromJson(raw: Map<*, *>): Node? {
     val t = (raw["type"] as? String) ?: return null
-    val cls = when (NodeType.fromWire(t)) {
+    val nodeType = NodeType.fromWireOrNull(t)
+    if (nodeType == null) {
+        Log.w(TAG, "Unknown node type: $t")
+        if (DEBUG_LOGGING) {
+            Log.d(TAG, "Skipping node payload: $raw")
+        }
+        return null
+    }
+    val cls = when (nodeType) {
         NodeType.Note -> Note()
         NodeType.List -> ListNode()
         NodeType.ListItem -> ListItem()
