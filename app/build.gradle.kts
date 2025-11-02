@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.gpsoauth)
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)
     testImplementation(libs.robolectric)
