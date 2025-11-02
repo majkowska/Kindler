@@ -1,4 +1,9 @@
+import com.android.build.api.dsl.DefaultConfig
 import java.util.Properties
+
+fun DefaultConfig.buildStringConfigField(name: String, localProperties: Properties) =
+    buildConfigField("String", name, "\"${localProperties.getProperty(name, "")}\"")
+
 
 plugins {
     alias(libs.plugins.android.application)
@@ -11,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "com.kindler"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -24,7 +29,10 @@ android {
             localProperties.load(localPropertiesFile.inputStream())
         }
 
-        buildConfigField("String", "MASTER_TOKEN", "\"${localProperties.getProperty("MASTER_TOKEN", "")}\"")
+        buildStringConfigField("MASTER_TOKEN", localProperties)
+        buildStringConfigField("GOOGLE_ACCOUNT_EMAIL", localProperties)
+        buildStringConfigField("GOOGLE_ANDROID_ID", localProperties)
+        buildStringConfigField("GOOGLE_CLIENT_SIGNATURE", localProperties)
     }
 
     buildFeatures {
@@ -57,6 +65,7 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.gpsoauth)
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)
     testImplementation(libs.robolectric)
