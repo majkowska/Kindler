@@ -254,8 +254,8 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
     @Throws(APIException::class, APIAuth.LoginException::class, AuthError::class, IOException::class)
     fun changes(
         targetVersion: String? = null,
-        nodes: List<Any?> = emptyList(),
-        labels: List<Any?> = emptyList()
+        nodes: List<Map<String, Any?>> = emptyList(),
+        labels: List<Map<String, Any?>> = emptyList()
     ): JSONObject {
         val params = JSONObject().apply {
             put("nodes", toJsonArray(nodes))
@@ -297,7 +297,7 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
         }
     }
 
-    private fun toJsonArray(items: List<Any?>): JSONArray {
+    private fun toJsonArray(items: Collection<*>): JSONArray {
         val array = JSONArray()
         items.forEach { item -> array.put(toJsonValue(item)) }
         return array
