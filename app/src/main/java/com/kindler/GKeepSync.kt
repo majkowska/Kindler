@@ -22,8 +22,6 @@ import kotlin.random.Random
 
 class GKeepSync {
     private val keepApi = KeepAPI()
-    private val mediaApi = MediaAPI()
-
     private var keepVersion: String? = null
     private val labels = mutableMapOf<String, Label>()
     private val nodes = mutableMapOf<String, Node>()
@@ -321,46 +319,6 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
         val timestampMillis = (epochSeconds * 1000).toLong()
         val randomComponent = Random.nextLong(1_000_000_000L, 10_000_000_000L)
         return "s--${timestampMillis}--${randomComponent}"
-    }
-}
-
-class MediaAPI(auth: APIAuth? = null) : API(API_URL, auth) {
-    companion object {
-        private const val API_URL = "https://keep.google.com/media/v2/"
-    }
-
-    @Throws(APIAuth.LoginException::class, AuthError::class, IOException::class)
-    fun get(blob: Blob): String {
-        val parentServerId = blob.parent?.serverId
-            ?: throw IllegalArgumentException("Blob parent must have a serverId")
-        val blobServerId = blob.serverId
-            ?: throw IllegalArgumentException("Blob must have a serverId")
-
-        val path = buildString {
-            append(parentServerId)
-            append('/')
-            append(blobServerId)
-
-            val nodeBlob = blob.blob
-            if (nodeBlob is NodeDrawing) {
-                val drawingId = nodeBlob.drawingInfo?.drawingId
-                if (!drawingId.isNullOrBlank()) {
-                    append('/')
-                    append(drawingId)
-                }
-            }
-        }
-
-        return sendRaw(
-            APIRequest(
-                url = baseUrl + path,
-                method = "GET",
-                allowRedirects = false
-            )
-        ).use { response ->
-            response.header("location")
-                ?: throw IOException("Missing redirect location header")
-        }
     }
 }
 
