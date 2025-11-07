@@ -1,5 +1,6 @@
 package com.kindler
 
+import android.util.Log
 import io.github.rukins.gpsoauth.Auth
 import io.github.rukins.gpsoauth.exception.AuthError
 import io.github.rukins.gpsoauth.model.AccessToken
@@ -10,14 +11,36 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
+import kotlin.random.Random
 
 class GKeepSync {
+    private val keepApi = KeepAPI()
+    private var keepVersion: String? = null
+    private val labels = mutableMapOf<String, Label>()
+    private val nodes = mutableMapOf<String, Node>()
+    private val sidMap = mutableMapOf<String, Node>()
+
+    init {
+        clear()
+    }
+
+    private fun clear() {
+        keepVersion = null
+        labels.clear()
+        nodes.clear()
+        sidMap.clear()
+
+        val rootNode = Root()
+        nodes[RootId.ID] = rootNode
+    }
+
     companion object {
         private const val GOOGLE_KEEP_SCOPES =
             "oauth2:https://www.googleapis.com/auth/memento https://www.googleapis.com/auth/reminders"
@@ -95,18 +118,18 @@ class APIAuth(private val scopes: String) {
     class LoginException(message: String) : IOException(message)
 }
 
-class API(
-    private val baseUrl: String,
+open class API(
+    protected val baseUrl: String,
     private var auth: APIAuth? = null
 ) {
     companion object {
-        private const val RETRY_COUNT = 2
-        private const val INITIAL_DELAY_SECONDS = 2L
-        private const val MAX_DELAY_SECONDS = 60L
+        internal const val RETRY_COUNT = 2
+        internal const val INITIAL_DELAY_SECONDS = 2L
+        internal const val MAX_DELAY_SECONDS = 60L
         private const val USER_AGENT = "x-gkeepapi/${BuildConfig.VERSION_NAME} (https://github.com/kiwiz/gkeepapi)"
         private const val HEADER_AUTHORIZATION = "Authorization"
         private const val HEADER_USER_AGENT = "User-Agent"
-        private const val HTTP_TOO_MANY_REQUESTS = 429
+        internal const val HTTP_TOO_MANY_REQUESTS = 429
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 
@@ -167,7 +190,7 @@ class API(
     }
 
     @Throws(APIAuth.LoginException::class, IOException::class)
-    private fun sendRaw(request: APIRequest): Response {
+    protected fun sendRaw(request: APIRequest): Response {
         val apiAuth = auth ?: throw APIAuth.LoginException("Not logged in")
         val authToken = apiAuth.getAuthToken() ?: throw APIAuth.LoginException("Not logged in")
 
@@ -205,6 +228,100 @@ class API(
 
 }
 
+class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
+    companion object {
+        private const val API_URL = "https://www.googleapis.com/notes/v1/"
+        private const val LOG_TAG = "KeepAPI"
+        private val CAPABILITIES = listOf(
+            "NC",
+            "PI",
+            "LB",
+            "AN",
+            "SH",
+            "DR",
+            "TR",
+            "IN",
+            "SNB",
+            "MI",
+            "CO"
+        )
+    }
+
+    private val sessionId: String = generateSessionId(currentEpochSeconds())
+
+    @Throws(APIException::class, APIAuth.LoginException::class, AuthError::class, IOException::class)
+    fun changes(
+        targetVersion: String? = null,
+        nodes: List<Map<String, Any?>> = emptyList(),
+        labels: List<Map<String, Any?>> = emptyList()
+    ): JSONObject {
+        val params = JSONObject().apply {
+            put("nodes", toJsonArray(nodes))
+            put("clientTimestamp", NodeTimestamps.dtToStr(NodeTimestamps.now()))
+            put("requestHeader", buildRequestHeader())
+            targetVersion?.let { put("targetVersion", it) }
+            if (labels.isNotEmpty()) {
+                put("userInfo", JSONObject().apply { put("labels", toJsonArray(labels)) })
+            }
+        }
+
+        Log.d(LOG_TAG, "Syncing ${'$'}{labels.size} labels and ${'$'}{nodes.size} nodes")
+
+        return send(
+            APIRequest(
+                url = baseUrl + "changes",
+                method = "POST",
+                json = params
+            )
+        )
+    }
+
+    private fun buildRequestHeader(): JSONObject {
+        val capabilities = JSONArray()
+        CAPABILITIES.forEach { capability ->
+            capabilities.put(JSONObject().put("type", capability))
+        }
+
+        return JSONObject().apply {
+            put("clientSessionId", sessionId)
+            put("clientPlatform", "ANDROID")
+            put("clientVersion", JSONObject().apply {
+                put("major", "9")
+                put("minor", "9")
+                put("build", "9")
+                put("revision", "9")
+            })
+            put("capabilities", capabilities)
+        }
+    }
+
+    private fun toJsonArray(items: Collection<*>): JSONArray {
+        val array = JSONArray()
+        items.forEach { item -> array.put(toJsonValue(item)) }
+        return array
+    }
+
+    private fun toJsonValue(value: Any?): Any {
+        return when (value) {
+            null -> JSONObject.NULL
+            is JSONObject -> value
+            is JSONArray -> value
+            is Map<*, *> -> JSONObject(value)
+            is Collection<*> -> toJsonArray(value.toList())
+            is Array<*> -> toJsonArray(value.toList())
+            else -> value
+        }
+    }
+
+    private fun currentEpochSeconds(): Double = System.currentTimeMillis() / 1000.0
+
+    private fun generateSessionId(epochSeconds: Double): String {
+        val timestampMillis = (epochSeconds * 1000).toLong()
+        val randomComponent = Random.nextLong(1_000_000_000L, 10_000_000_000L)
+        return "s--${timestampMillis}--${randomComponent}"
+    }
+}
+
 data class APIRequest(
     val url: String,
     val method: String,
@@ -213,4 +330,4 @@ data class APIRequest(
     val allowRedirects: Boolean = true
 )
 
-class APIException(code: Int, val error: JSONObject) : IOException("API error $code: ${'$'}error")
+class APIException(code: Int, val error: JSONObject) : IOException("API error $code: $error")
