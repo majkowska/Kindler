@@ -572,7 +572,7 @@ class BlobFactoryTest {
 
     @Test
     fun blobFactory_shouldReturnSpecificBlobTypes() {
-        val image = Blob.fromJson(
+        val image = Blob.fromPayload(
             mapOf(
                 "type" to BlobType.Image.wire,
                 "blob_id" to "blob",
@@ -582,10 +582,10 @@ class BlobFactoryTest {
         )
         assertTrue(image is NodeImage)
 
-        val drawing = Blob.fromJson(mapOf("type" to BlobType.Drawing.wire))
+        val drawing = Blob.fromPayload(mapOf("type" to BlobType.Drawing.wire))
         assertTrue(drawing is NodeDrawing)
 
-        val audio = Blob.fromJson(mapOf("type" to BlobType.Audio.wire))
+        val audio = Blob.fromPayload(mapOf("type" to BlobType.Audio.wire))
         assertTrue(audio is NodeAudio)
     }
 }

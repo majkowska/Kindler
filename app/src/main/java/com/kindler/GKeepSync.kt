@@ -41,10 +41,314 @@ class GKeepSync {
         nodes[RootId.ID] = rootNode
     }
 
+    private fun refreshServerIdIndex() {
+        sidMap.clear()
+        nodes.values.forEach { node ->
+            node.serverId?.let { sidMap[it] = node }
+        }
+    }
+
+    private fun verifyNodeReachability() {
+        val foundIds = mutableSetOf<String>()
+        val stack = ArrayDeque<Node>()
+        nodes[RootId.ID]?.let { stack.addLast(it) }
+
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (!foundIds.add(node.id)) continue
+            node.children.forEach { child -> stack.addLast(child) }
+        }
+
+        nodes.keys.forEach { nodeId ->
+            if (nodeId !in foundIds) {
+                Log.e(LOG_TAG, "Dangling node: $nodeId")
+            }
+        }
+
+        foundIds.forEach { nodeId ->
+            if (nodeId !in nodes) {
+                Log.e(LOG_TAG, "Unregistered node: $nodeId")
+            }
+        }
+    }
+
+    private fun allNodes(): Collection<Node> = nodes.values
+
+    private fun findDirtyNodes(): List<Node> {
+        // Ensure the internal map has all child nodes referenced by parents.
+        val currentNodes = nodes.values.toList()
+        currentNodes.forEach { node ->
+            node.children.forEach { child ->
+                if (child.id !in nodes) {
+                    nodes[child.id] = child
+                }
+            }
+        }
+
+        return nodes.values.filter { it.dirty }
+    }
+
+    private fun parseUserInfo(raw: JSONObject?) {
+        val incomingLabels = mutableMapOf<String, Label>()
+        val labelsArray = raw?.optJSONArray("labels")
+
+        if (labelsArray != null) {
+            for (index in 0 until labelsArray.length()) {
+                val labelObject = labelsArray.optJSONObject(index) ?: continue
+                val mainId = labelObject.optString("mainId")
+                if (mainId.isBlank()) continue
+
+                val existingLabel = labels.remove(mainId)
+                val label = existingLabel ?: Label()
+                if (existingLabel != null) {
+                    Log.d(LOG_TAG, "Updated label: $mainId")
+                } else {
+                    Log.d(LOG_TAG, "Created label: $mainId")
+                }
+
+                label.load(jsonObjectToMap(labelObject))
+                incomingLabels[mainId] = label
+            }
+        }
+
+        labels.keys.forEach { labelId ->
+            Log.d(LOG_TAG, "Deleted label: $labelId")
+        }
+
+        labels.clear()
+        labels.putAll(incomingLabels)
+    }
+
+    private fun parseNodes(raw: JSONArray?) {
+        if (raw == null) return
+
+        val createdNodes = mutableListOf<Node>()
+        val deletedNodes = mutableListOf<Node>()
+        val listItemNodes = mutableListOf<ListItem>()
+
+        for (index in 0 until raw.length()) {
+            val rawNodeJson = raw.optJSONObject(index) ?: continue
+            val rawNode = jsonObjectToMap(rawNodeJson)
+            val nodeId = rawNode["id"] as? String ?: continue
+
+            val existingNode = nodes[nodeId]
+            var node: Node? = existingNode
+
+            if (existingNode != null) {
+                if (rawNode.containsKey("parentId")) {
+                    existingNode.load(rawNode)
+                    existingNode.serverId?.let { sidMap[it] = existingNode }
+                    Log.d(LOG_TAG, "Updated node: $nodeId")
+                } else {
+                    deletedNodes += existingNode
+                }
+            } else {
+                val createdNode = nodeFromPayload(rawNode)
+                if (createdNode == null) {
+                    Log.d(LOG_TAG, "Discarded unknown node")
+                } else {
+                    nodes[nodeId] = createdNode
+                    createdNode.serverId?.let { sidMap[it] = createdNode }
+                    createdNodes += createdNode
+                    node = createdNode
+                    Log.d(LOG_TAG, "Created node: $nodeId")
+                }
+            }
+
+            val listItem = node as? ListItem
+            if (listItem != null) {
+                listItemNodes += listItem
+            }
+        }
+
+        listItemNodes.forEach { item ->
+            val previous = item.prevSuperListItemId
+            val current = item.superListItemId
+            if (previous == current) return@forEach
+
+            if (!previous.isNullOrEmpty()) {
+                (nodes[previous] as? ListItem)?.dedent(item, false)
+            }
+            if (!current.isNullOrEmpty()) {
+                (nodes[current] as? ListItem)?.indent(item, false)
+            }
+        }
+
+        createdNodes.forEach { node ->
+            Log.d(LOG_TAG, "Attached node: ${'$'}{node.id} to ${'$'}{node.parentId}")
+            val parentNode = node.parentId?.let { nodes[it] }
+            parentNode?.append(node, false)
+        }
+
+        deletedNodes.forEach { node ->
+            node.parent?.remove(node, false)
+            nodes.remove(node.id)
+            node.serverId?.let { sidMap.remove(it) }
+            Log.d(LOG_TAG, "Deleted node: ${'$'}{node.id}")
+        }
+
+        allNodes().forEach { node ->
+            val topLevelNode = node as? TopLevelNode ?: return@forEach
+            topLevelNode.labels.hydrate { labelId -> labels[labelId] }
+        }
+    }
+
+    @Throws(
+        APIException::class,
+        APIAuth.LoginException::class,
+        AuthError::class,
+        IOException::class,
+        ResyncRequiredException::class,
+        UpgradeRecommendedException::class
+    )
+    fun syncNotes() {
+        while (true) {
+            Log.d(LOG_TAG, "Starting keep sync: $keepVersion")
+
+            val dirtyNodes = findDirtyNodes().map { it.save() }
+            val labelsUpdated = labels.values.any { it.dirty }
+            val labelsPayload = if (labelsUpdated) {
+                labels.values.map { it.save() }
+            } else {
+                emptyList()
+            }
+
+            val changes = keepApi.changes(
+                targetVersion = keepVersion,
+                nodes = dirtyNodes,
+                labels = labelsPayload
+            )
+
+            if (changes.optBoolean("forceFullResync")) {
+                throw ResyncRequiredException("Full resync required")
+            }
+
+            if (changes.optBoolean("upgradeRecommended")) {
+                throw UpgradeRecommendedException("Upgrade recommended")
+            }
+
+            changes.optJSONObject("userInfo")?.let { parseUserInfo(it) }
+            changes.optJSONArray("nodes")?.let { parseNodes(it) }
+
+            keepVersion = changes.getString("toVersion")
+            Log.d(LOG_TAG, "Finishing sync: $keepVersion")
+
+            if (!changes.optBoolean("truncated")) {
+                break
+            }
+        }
+    }
+
+    @Throws(
+        APIException::class,
+        APIAuth.LoginException::class,
+        AuthError::class,
+        IOException::class,
+        ResyncRequiredException::class,
+        UpgradeRecommendedException::class
+    )
+    fun sync(resync: Boolean = false) {
+        if (resync) {
+            clear()
+        }
+
+        syncNotes()
+
+        if (DEBUG) {
+            refreshServerIdIndex()
+            verifyNodeReachability()
+        }
+    }
+
+    @Throws(
+        APIException::class,
+        APIAuth.LoginException::class,
+        AuthError::class,
+        IOException::class,
+        ResyncRequiredException::class,
+        UpgradeRecommendedException::class
+    )
+    fun load(auth: APIAuth, state: Map<String, Any?>? = null, sync: Boolean = true) {
+        keepApi.setAuth(auth)
+
+        state?.let { restore(it) }
+        if (sync) {
+            sync()
+        }
+    }
+
+    /**
+     * Restore a previously serialized state of labels, nodes, and Keep version.
+     */
+    fun restore(state: Map<String, Any?>) {
+        clear()
+
+        val labelsArray = toJsonArray(state["labels"], "labels", allowNull = false)
+        val nodesArray = toJsonArray(state["nodes"], "nodes", allowNull = false)
+
+        parseUserInfo(JSONObject().apply { put("labels", labelsArray) })
+        parseNodes(nodesArray)
+
+        val versionValue = (state["keep_version"] ?: state["keepVersion"])
+            ?: throw IllegalArgumentException("State missing keep_version")
+        keepVersion = versionValue as? String
+            ?: throw IllegalArgumentException("keep_version must be a String")
+    }
+
+    private fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any?> {
+        val map = mutableMapOf<String, Any?>()
+        val keys = jsonObject.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = when (val rawValue = jsonObject.get(key)) {
+                JSONObject.NULL -> null
+                is JSONObject -> jsonObjectToMap(rawValue)
+                is JSONArray -> jsonArrayToList(rawValue)
+                else -> rawValue
+            }
+            map[key] = value
+        }
+        return map
+    }
+
+    private fun jsonArrayToList(array: JSONArray): List<Any?> {
+        val list = mutableListOf<Any?>()
+        for (i in 0 until array.length()) {
+            val value = when (val entry = array.get(i)) {
+                JSONObject.NULL -> null
+                is JSONObject -> jsonObjectToMap(entry)
+                is JSONArray -> jsonArrayToList(entry)
+                else -> entry
+            }
+            list += value
+        }
+        return list
+    }
+
+    private fun toJsonArray(value: Any?, fieldName: String, allowNull: Boolean): JSONArray {
+        if (value == null) {
+            if (allowNull) return JSONArray()
+            throw IllegalArgumentException("State missing $fieldName")
+        }
+
+        return when (value) {
+            is JSONArray -> value
+            is Collection<*> -> JSONArray(value)
+            is Array<*> -> JSONArray(value.toList())
+            is String -> try {
+                JSONArray(value)
+            } catch (error: JSONException) {
+                throw IllegalArgumentException("State field $fieldName must be a JSON array string", error)
+            }
+            else -> throw IllegalArgumentException("Unsupported type for $fieldName: ${value::class.java.simpleName}")
+        }
+    }
+
     companion object {
         private const val GOOGLE_KEEP_SCOPES =
             "oauth2:https://www.googleapis.com/auth/memento https://www.googleapis.com/auth/reminders"
         private const val GOOGLE_KEEP_APP = "com.google.android.keep"
+        private const val LOG_TAG = "GKeepSync"
     }
 
     @Throws(AuthError::class)
@@ -331,3 +635,7 @@ data class APIRequest(
 )
 
 class APIException(code: Int, val error: JSONObject) : IOException("API error $code: $error")
+
+class ResyncRequiredException(message: String) : IOException(message)
+
+class UpgradeRecommendedException(message: String) : IOException(message)
