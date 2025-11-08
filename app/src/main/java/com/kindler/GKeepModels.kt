@@ -24,6 +24,7 @@ import kotlin.reflect.KProperty
 
 /* ========== Constants ========== */
 
+const val DEBUG = false
 private const val TAG = "GKeepModels"
 private const val SORT_MIN = 1_000_000_000L
 private const val SORT_MAX = 9_999_999_999L
@@ -286,7 +287,7 @@ class Context : Annotation() {
         for ((k, v) in ctx) {
             val key = k as? String ?: continue
             val vMap = v as? Map<*, *> ?: continue
-            val ann = NodeAnnotations.fromJson(mapOf(key to vMap))
+            val ann = NodeAnnotations.fromPayload(mapOf(key to vMap))
             if (ann != null) entries[key] = ann
         }
     }
@@ -316,7 +317,7 @@ class NodeAnnotations : Element() {
         annotations.clear()
         val arr = raw["annotations"] as? List<*> ?: return
         for (item in arr) {
-            val ann = fromJson(item as? Map<*, *> ?: continue) ?: continue
+            val ann = fromPayload(item as? Map<*, *> ?: continue) ?: continue
             val id = ann.id ?: continue
             annotations[id] = ann
         }
@@ -364,7 +365,7 @@ class NodeAnnotations : Element() {
         get() = super.dirty || annotations.values.any { it.dirty }
 
     companion object {
-        fun fromJson(raw: Map<*, *>): Annotation? {
+        fun fromPayload(raw: Map<*, *>): Annotation? {
             val annotation = when {
                 "webLink" in raw -> WebLink()
                 "topicCategory" in raw -> Category()
@@ -644,6 +645,11 @@ class NodeLabels : Element() {
     fun remove(label: Label) { if (labels.containsKey(label.id)) labels[label.id] = null; dirtyFlag = true }
     fun get(labelId: String): Label? = labels[labelId]
     fun all(): List<Label> = labels.values.filterNotNull()
+
+    fun hydrate(resolver: (String) -> Label?) {
+        val ids = labels.keys.toList()
+        ids.forEach { id -> labels[id] = resolver(id) }
+    }
 }
 
 /* ========== Node hierarchy ========== */
@@ -1151,7 +1157,7 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        blob = fromJson(raw["blob"] as? Map<*, *>)
+        blob = fromPayload(raw["blob"] as? Map<*, *>)
     }
 
     override fun save(clean: Boolean) = super.save(clean).apply {
@@ -1159,7 +1165,7 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
     }
 
     companion object {
-        fun fromJson(raw: Map<*, *>?): NodeBlob? {
+        fun fromPayload(raw: Map<*, *>?): NodeBlob? {
             raw ?: return null
             val t = raw["type"] as? String ?: return null
             val blobType = BlobType.fromWireOrNull(t)
@@ -1181,7 +1187,7 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
 
 /* ========== Node factory ========== */
 
-fun nodeFromJson(raw: Map<*, *>): Node? {
+fun nodeFromPayload(raw: Map<*, *>): Node? {
     val t = (raw["type"] as? String) ?: return null
     val nodeType = NodeType.fromWireOrNull(t)
     if (nodeType == null) {
