@@ -533,7 +533,7 @@ open class API(
     private var auth: APIAuth? = null
 ) {
     companion object {
-        internal const val RETRY_COUNT = 2
+        internal const val RETRY_COUNT = 4
         internal const val INITIAL_DELAY_SECONDS = 2L
         internal const val MAX_DELAY_SECONDS = 60L
         private const val USER_AGENT = "x-gkeepapi/${BuildConfig.VERSION_NAME} (https://github.com/kiwiz/gkeepapi)"
@@ -577,6 +577,11 @@ open class API(
 
             val error = payload.getJSONObject("error")
             val code = error.getInt("code")
+            attempts += 1
+
+            if (attempts > RETRY_COUNT) {
+                throw APIException(code, error)
+            }
 
             if (code == HTTP_TOO_MANY_REQUESTS) {
                 TimeUnit.SECONDS.sleep(delaySeconds)
@@ -585,13 +590,8 @@ open class API(
             }
 
             if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-                if (attempts >= RETRY_COUNT) {
-                    throw APIException(code, error)
-                }
-
                 val apiAuth = auth ?: throw APIAuth.LoginException("Not logged in")
                 apiAuth.refresh()
-                attempts += 1
                 continue
             }
 
