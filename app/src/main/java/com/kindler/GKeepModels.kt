@@ -38,6 +38,8 @@ class MergeException(message: String = "Merge conflict") : RuntimeException(mess
 
 class InvalidException(message: String) : RuntimeException(message)
 
+class LabelException(message: String) : RuntimeException(message)
+
 private fun currentEpochSeconds(): Double = System.currentTimeMillis() / 1000.0
 
 /* ========== Enums ========== */
