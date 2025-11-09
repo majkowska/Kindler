@@ -25,7 +25,7 @@ class GKeepSync {
     private var keepVersion: String? = null
     private val labels = mutableMapOf<String, Label>()
     private val nodes = mutableMapOf<String, Node>()
-    private val sidMap = mutableMapOf<String, Node>()
+    private val sidMap = mutableMapOf<String, String>()
 
     init {
         clear()
@@ -44,7 +44,7 @@ class GKeepSync {
     private fun refreshServerIdIndex() {
         sidMap.clear()
         nodes.values.forEach { node ->
-            node.serverId?.let { sidMap[it] = node }
+            node.serverId?.let { sidMap[it] = node.id }
         }
     }
 
@@ -137,7 +137,7 @@ class GKeepSync {
             if (existingNode != null) {
                 if (rawNode.containsKey("parentId")) {
                     existingNode.load(rawNode)
-                    existingNode.serverId?.let { sidMap[it] = existingNode }
+                    existingNode.serverId?.let { sidMap[it] = existingNode.id }
                     Log.d(LOG_TAG, "Updated node: $nodeId")
                 } else {
                     deletedNodes += existingNode
@@ -148,7 +148,7 @@ class GKeepSync {
                     Log.d(LOG_TAG, "Discarded unknown node")
                 } else {
                     nodes[nodeId] = createdNode
-                    createdNode.serverId?.let { sidMap[it] = createdNode }
+                    createdNode.serverId?.let { sidMap[it] = createdNode.id }
                     createdNodes += createdNode
                     node = createdNode
                     Log.d(LOG_TAG, "Created node: $nodeId")
@@ -268,6 +268,26 @@ class GKeepSync {
         ResyncRequiredException::class,
         UpgradeRecommendedException::class
     )
+    fun authenticate(
+        email: String,
+        masterToken: String,
+        state: Map<String, Any?>? = null,
+        sync: Boolean = true,
+        androidId: String? = null
+    ) {
+        val auth = APIAuth(GOOGLE_KEEP_SCOPES)
+        auth.load(email, masterToken, androidId?: BuildConfig.GOOGLE_ANDROID_ID)
+        load(auth, state, sync)
+    }
+
+    @Throws(
+        APIException::class,
+        APIAuth.LoginException::class,
+        AuthError::class,
+        IOException::class,
+        ResyncRequiredException::class,
+        UpgradeRecommendedException::class
+    )
     fun load(auth: APIAuth, state: Map<String, Any?>? = null, sync: Boolean = true) {
         keepApi.setAuth(auth)
 
@@ -283,8 +303,8 @@ class GKeepSync {
     fun restore(state: Map<String, Any?>) {
         clear()
 
-        val labelsArray = toJsonArray(state["labels"], "labels", allowNull = false)
-        val nodesArray = toJsonArray(state["nodes"], "nodes", allowNull = false)
+        val labelsArray = toJsonArray(state["labels"], "labels")
+        val nodesArray = toJsonArray(state["nodes"], "nodes")
 
         parseUserInfo(JSONObject().apply { put("labels", labelsArray) })
         parseNodes(nodesArray)
@@ -293,6 +313,93 @@ class GKeepSync {
             ?: throw IllegalArgumentException("State missing keep_version")
         keepVersion = versionValue as? String
             ?: throw IllegalArgumentException("keep_version must be a String")
+    }
+
+    /**
+     * Serialize Keep state for persistence.
+     */
+    fun dump(): Map<String, Any?> {
+        val rootNode = nodes[RootId.ID]
+        val orderedNodes = mutableListOf<Node>()
+
+        rootNode?.children?.forEach { node ->
+            orderedNodes += node
+            node.children.forEach { child -> orderedNodes += child }
+        }
+
+        val serializedNodes = orderedNodes.map { it.save(clean = false) }
+        val serializedLabels = labels.values.map { it.save(clean = false) }
+
+        return mapOf(
+            "keep_version" to keepVersion,
+            "labels" to serializedLabels,
+            "nodes" to serializedNodes
+        )
+    }
+
+    /**
+     * Retrieve a top-level note or list by its local or server ID.
+     */
+    fun get(nodeId: String): TopLevelNode? {
+        val rootNode = nodes[RootId.ID] ?: return null
+        val directMatch = rootNode.get(nodeId) as? TopLevelNode
+        if (directMatch != null) return directMatch
+
+        val localId = sidMap[nodeId] ?: return null
+        return rootNode.get(localId) as? TopLevelNode
+    }
+
+    /**
+     * Locate a label by name.
+     */
+    fun findLabel(name: String): Label? {
+        val target = name.lowercase()
+        return labels.values.firstOrNull { it.name.lowercase() == target }
+    }
+
+    /**
+     * Create a new note and register it for syncing.
+     */
+    fun createNote(title: String? = null, text: String? = null): Note {
+        val node = Note()
+        if (title != null) {
+            node.title = title
+        }
+        if (text != null) {
+            node.setText(text)
+        }
+        add(node)
+        return node
+    }
+
+    /**
+     * Create a new label.
+     *
+     * @throws LabelException if a label with the same name already exists.
+     */
+    fun createLabel(name: String): Label {
+        if (findLabel(name) != null) {
+            throw LabelException("Label exists")
+        }
+        val label = Label()
+        label.name = name
+        labels[label.id] = label
+        return label
+    }
+
+    /**
+     * Register a top-level node for syncing.
+     */
+    @Throws(InvalidException::class)
+    fun add(node: Node) {
+        if (node.parentId != RootId.ID) {
+            throw InvalidException("Not a top level node")
+        }
+
+        nodes[node.id] = node
+        val parentNode = nodes[node.parentId]
+            ?: throw InvalidException("Parent node not found")
+        parentNode.append(node, false)
     }
 
     private fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any?> {
@@ -325,9 +432,8 @@ class GKeepSync {
         return list
     }
 
-    private fun toJsonArray(value: Any?, fieldName: String, allowNull: Boolean): JSONArray {
+    private fun toJsonArray(value: Any?, fieldName: String): JSONArray {
         if (value == null) {
-            if (allowNull) return JSONArray()
             throw IllegalArgumentException("State missing $fieldName")
         }
 
@@ -379,10 +485,10 @@ class APIAuth(private val scopes: String) {
     private var androidId: String? = null
 
     @Throws(AuthError::class, LoginException::class)
-    fun load(email: String, masterToken: String, deviceId: String): Boolean {
+    fun load(email: String, masterToken: String, androidId: String): Boolean {
         this.email = email
         this.masterToken = masterToken
-        this.androidId = deviceId
+        this.androidId = androidId
         this.authToken = null
 
         refresh()
@@ -634,7 +740,7 @@ data class APIRequest(
     val allowRedirects: Boolean = true
 )
 
-class APIException(code: Int, val error: JSONObject) : IOException("API error $code: $error")
+class APIException(code: Int, error: JSONObject) : IOException("API error $code: $error")
 
 class ResyncRequiredException(message: String) : IOException(message)
 
