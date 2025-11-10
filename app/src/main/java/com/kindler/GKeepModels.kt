@@ -44,32 +44,32 @@ private fun currentEpochSeconds(): Double = System.currentTimeMillis() / 1000.0
 
 /* ========== Enums ========== */
 
-enum class NodeType(val wire: String) {
+enum class NodeType(val value: String) {
     Note("NOTE"),
     List("LIST"),
     ListItem("LIST_ITEM"),
     Blob("BLOB");
 
     companion object {
-        fun fromWireOrNull(s: String): NodeType? = entries.firstOrNull { it.wire == s }
-        fun fromWire(s: String) = fromWireOrNull(s)
+        fun fromValueOrNull(s: String): NodeType? = entries.firstOrNull { it.value == s }
+        fun fromValue(s: String) = fromValueOrNull(s)
             ?: throw InvalidException("Unknown NodeType: $s")
     }
 }
 
-enum class BlobType(val wire: String) {
+enum class BlobType(val value: String) {
     Audio("AUDIO"),
     Image("IMAGE"),
     Drawing("DRAWING");
 
     companion object {
-        fun fromWireOrNull(s: String): BlobType? = entries.firstOrNull { it.wire == s }
-        fun fromWire(s: String) = fromWireOrNull(s)
+        fun fromValueOrNull(s: String): BlobType? = entries.firstOrNull { it.value == s }
+        fun fromValue(s: String) = fromValueOrNull(s)
             ?: throw InvalidException("Unknown BlobType: $s")
     }
 }
 
-enum class ColorValue(val wire: String) {
+enum class ColorValue(val value: String) {
     White("DEFAULT"),
     Red("RED"),
     Orange("ORANGE"),
@@ -84,12 +84,12 @@ enum class ColorValue(val wire: String) {
     Gray("GRAY");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromValue(s: String) = entries.firstOrNull { it.value == s }
             ?: throw InvalidException("Unknown ColorValue: $s")
     }
 }
 
-enum class CategoryValue(val wire: String) {
+enum class CategoryValue(val value: String) {
     Books("BOOKS"),
     Food("FOOD"),
     Movies("MOVIES"),
@@ -100,52 +100,52 @@ enum class CategoryValue(val wire: String) {
     TV("TV");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromValue(s: String) = entries.firstOrNull { it.value == s }
             ?: throw InvalidException("Unknown CategoryValue: $s")
     }
 }
 
-enum class NewListItemPlacementValue(val wire: String) {
+enum class NewListItemPlacementValue(val value: String) {
     Top("TOP"), Bottom("BOTTOM");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromValue(s: String) = entries.firstOrNull { it.value == s }
             ?: throw InvalidException("Unknown NewListItemPlacementValue: $s")
     }
 }
 
-enum class GraveyardStateValue(val wire: String) {
+enum class GraveyardStateValue(val value: String) {
     Expanded("EXPANDED"), Collapsed("COLLAPSED");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromValue(s: String) = entries.firstOrNull { it.value == s }
             ?: throw InvalidException("Unknown GraveyardStateValue: $s")
     }
 }
 
-enum class CheckedListItemsPolicyValue(val wire: String) {
+enum class CheckedListItemsPolicyValue(val value: String) {
     Default("DEFAULT"), Graveyard("GRAVEYARD");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromValue(s: String) = entries.firstOrNull { it.value == s }
             ?: throw InvalidException("Unknown CheckedListItemsPolicyValue: $s")
     }
 }
 
-enum class ShareRequestValue(val wire: String) {
+enum class ShareRequestValue(val value: String) {
     Add("WR"), Remove("RM");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromValue(s: String) = entries.firstOrNull { it.value == s }
             ?: throw InvalidException("Unknown ShareRequestValue: $s")
     }
 }
 
-enum class RoleValue(val wire: String) {
+enum class RoleValue(val value: String) {
     Owner("O"), User("W");
 
     companion object {
-        fun fromWire(s: String) = entries.firstOrNull { it.wire == s }
+        fun fromValue(s: String) = entries.firstOrNull { it.value == s }
             ?: throw InvalidException("Unknown RoleValue: $s")
     }
 }
@@ -159,10 +159,13 @@ enum class RoleValue(val wire: String) {
 open class Element {
     protected var dirtyFlag: Boolean = false
     open fun load(raw: Map<*, *>) { dirtyFlag = (raw["_dirty"] as? Boolean) == true }
-    open fun save(clean: Boolean = true): MutableMap<String, Any?> {
+    open fun save(includeDirty: Boolean = false): MutableMap<String, Any?> {
         val ret = mutableMapOf<String, Any?>()
-        if (!clean) ret["_dirty"] = dirtyFlag else dirtyFlag = false
+        if (includeDirty) ret["_dirty"] = dirtyFlag
         return ret
+    }
+    open fun clearDirty() {
+        dirtyFlag = false
     }
     protected fun <T> dirtyProperty(
         initialValue: T,
@@ -200,9 +203,9 @@ sealed class Annotation : Element() {
     override fun load(raw: Map<*, *>) {
         super.load(raw); id = raw["id"] as? String
     }
-    override fun save(clean: Boolean): MutableMap<String, Any?> {
+    override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
         if (id == null) return mutableMapOf()
-        return super.save(clean).apply { put("id", id) }
+        return super.save(includeDirty).apply { put("id", id) }
     }
 
     companion object {
@@ -236,7 +239,7 @@ class WebLink : Annotation() {
         (wl["description"] as? String)?.let { descriptionDelegate.setRaw(it) }
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("webLink", mapOf(
             "title" to title,
             "url" to url,
@@ -254,11 +257,11 @@ class Category : Annotation() {
     override fun load(raw: Map<*, *>) {
         super.load(raw)
         val tc = raw["topicCategory"] as? Map<*, *> ?: return
-        (tc["category"] as? String)?.let { categoryDelegate.setRaw(CategoryValue.fromWire(it)) }
+        (tc["category"] as? String)?.let { categoryDelegate.setRaw(CategoryValue.fromValue(it)) }
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
-        put("topicCategory", mapOf("category" to category?.wire))
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
+        put("topicCategory", mapOf("category" to category?.value))
     }
 }
 
@@ -271,7 +274,7 @@ class TaskAssist : Annotation() {
         suggestDelegate.setRaw((raw["taskAssist"] as? Map<*, *>)?.get("suggestType") as? String)
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("taskAssist", mapOf("suggestType" to suggest))
     }
 }
@@ -294,15 +297,20 @@ class Context : Annotation() {
         }
     }
 
-    override fun save(clean: Boolean): MutableMap<String, Any?> {
-        val ret = super.save(clean)
+    override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
+        val ret = super.save(includeDirty)
         val ctx = mutableMapOf<String, Any?>()
         entries.values.forEach { entry ->
             // merge each saved sub-annotation (e.g., {"webLink": {...}}) into context
-            ctx.putAll(entry.save(clean))
+            ctx.putAll(entry.save(includeDirty))
         }
         ret["context"] = ctx
         return ret
+    }
+
+    override fun clearDirty() {
+        super.clearDirty()
+        entries.values.forEach { it.clearDirty() }
     }
 
     override val dirty: Boolean
@@ -325,12 +333,17 @@ class NodeAnnotations : Element() {
         }
     }
 
-    override fun save(clean: Boolean): MutableMap<String, Any?> {
-        val ret = super.save(clean).apply { put("kind", "notes#annotationsGroup") }
+    override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
+        val ret = super.save(includeDirty).apply { put("kind", "notes#annotationsGroup") }
         if (annotations.isNotEmpty()) {
-            ret["annotations"] = annotations.values.map { it.save(clean) }
+            ret["annotations"] = annotations.values.map { it.save(includeDirty) }
         }
         return ret
+    }
+
+    override fun clearDirty() {
+        super.clearDirty()
+        annotations.values.forEach { it.clearDirty() }
     }
 
     private fun categoryNode(): Category? =
@@ -382,8 +395,6 @@ class NodeAnnotations : Element() {
             annotation.load(raw)
             return annotation
         }
-
-        internal fun wrapSave(a: Annotation, clean: Boolean): Map<String, Any?> = a.save(clean)
     }
 }
 
@@ -419,7 +430,7 @@ class NodeTimestamps(createTime: Double? = null) : Element() {
         editedDelegate.setRaw((raw["userEdited"] as? String)?.let { strToDt(it) })
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("kind", "notes#timestamps")
         put("created", dtToStr(created))
         deleted?.let { put("deleted", dtToStr(it)) }
@@ -467,24 +478,25 @@ class NodeSettings : Element() {
     override fun load(raw: Map<*, *>) {
         super.load(raw)
         (raw["newListItemPlacement"] as? String)?.let {
-            newListPlacementDelegate.setRaw(NewListItemPlacementValue.fromWire(it))
+            newListPlacementDelegate.setRaw(NewListItemPlacementValue.fromValue(it))
         }
         (raw["graveyardState"] as? String)?.let {
-            graveyardStateDelegate.setRaw(GraveyardStateValue.fromWire(it))
+            graveyardStateDelegate.setRaw(GraveyardStateValue.fromValue(it))
         }
         (raw["checkedListItemsPolicy"] as? String)?.let {
-            checkedItemsPolicyDelegate.setRaw(CheckedListItemsPolicyValue.fromWire(it))
+            checkedItemsPolicyDelegate.setRaw(CheckedListItemsPolicyValue.fromValue(it))
         }
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
-        put("newListItemPlacement", newListItemPlacement.wire)
-        put("graveyardState", graveyardState.wire)
-        put("checkedListItemsPolicy", checkedListItemsPolicy.wire)
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
+        put("newListItemPlacement", newListItemPlacement.value)
+        put("graveyardState", graveyardState.value)
+        put("checkedListItemsPolicy", checkedListItemsPolicy.value)
     }
 }
 
 class NodeCollaborators : Element() {
+
     private val collaborators: MutableMap<String, Any> = linkedMapOf()
 
     fun add(email: String) {
@@ -520,38 +532,38 @@ class NodeCollaborators : Element() {
 
         collaboratorsRaw.forEach { m ->
             val email = m["email"] as? String ?: return@forEach
-            val roleWire = m["role"] as? String ?: return@forEach
-            collaborators[email] = RoleValue.fromWire(roleWire)
+            val roleValue = m["role"] as? String ?: return@forEach
+            collaborators[email] = RoleValue.fromValue(roleValue)
         }
 
         requestsRawWithFlag.forEach { r ->
             val rm = r as? Map<*, *> ?: return@forEach
             val email = rm["email"] as? String ?: return@forEach
             val type = rm["type"] as? String ?: return@forEach
-            collaborators[email] = ShareRequestValue.fromWire(type)
+            collaborators[email] = ShareRequestValue.fromValue(type)
         }
     }
 
     fun saveNodeCollaborators(
-        clean: Boolean
+        includeDirty: Boolean
     ): Pair<List<Map<String, Any?>>, MutableList<Any?>> {
         val collabs = mutableListOf<Map<String, Any?>>()
         val requests = mutableListOf<Any?>()
         collaborators.forEach { (email, action) ->
             when (action) {
                 is ShareRequestValue -> {
-                    requests += mapOf("email" to email, "type" to action.wire)
+                    requests += mapOf("email" to email, "type" to action.value)
                 }
                 is RoleValue -> {
                     collabs += mapOf(
                         "email" to email,
-                        "role" to action.wire,
+                        "role" to action.value,
                         "auxiliary_type" to "None"
                     )
                 }
             }
         }
-        if (!clean) requests += dirtyFlag else dirtyFlag = false
+        if (includeDirty) requests += dirtyFlag
         return collabs to requests
     }
 }
@@ -586,11 +598,16 @@ class Label : Element() {
             ?: NodeTimestamps.zero())
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("mainId", id)
         put("name", name)
-        put("timestamps", timestamps.save(clean))
+        put("timestamps", timestamps.save(includeDirty))
         put("lastMerged", NodeTimestamps.dtToStr(merged))
+    }
+
+    override fun clearDirty() {
+        super.clearDirty()
+        timestamps.clearDirty()
     }
 
     override val dirty: Boolean get() = super.dirty || timestamps.dirty
@@ -611,7 +628,7 @@ class NodeLabels : Element() {
     private val labels: MutableMap<String, Label?> = linkedMapOf()
 
     fun load(raw: Any?) {
-        // Custom wire format (list + trailing bool)
+        // Custom format (list + trailing bool)
         val arr = when (raw) {
             is MutableList<*> -> raw.toMutableList()
             is List<*> -> raw.toMutableList()
@@ -630,7 +647,7 @@ class NodeLabels : Element() {
         }
     }
 
-    fun saveWire(clean: Boolean = true): MutableList<Any?> {
+    fun saveLabels(includeDirty: Boolean = false): MutableList<Any?> {
         val now = NodeTimestamps.now()
         val ret = labels.map { (id, label) ->
             val deletedTime = if (label == null) now else NodeTimestamps.zero()
@@ -639,7 +656,7 @@ class NodeLabels : Element() {
                 "deleted" to NodeTimestamps.dtToStr(deletedTime)
             )
         }.toMutableList<Any?>()
-        if (!clean) ret += dirtyFlag else dirtyFlag = false
+        if (includeDirty) ret += dirtyFlag
         return ret
     }
 
@@ -718,7 +735,7 @@ open class Node(
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        val t = NodeType.fromWire(raw["type"] as String)
+        val t = NodeType.fromValue(raw["type"] as String)
         if ((raw["kind"] as? String) != "notes#node")
             Log.w(TAG, "Unknown node kind: ${raw["kind"]}")
         if ("mergeConflict" in raw) throw MergeException()
@@ -735,19 +752,19 @@ open class Node(
         type = t
     }
 
-    override fun save(clean: Boolean): MutableMap<String, Any?> {
-        val ret = super.save(clean).apply {
+    override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
+        val ret = super.save(includeDirty).apply {
             put("id", id)
             put("kind", "notes#node")
-            put("type", type!!.wire)
+            put("type", type!!.value)
             put("parentId", parentId)
             put("sortValue", sort)
             if (!moved && version != null) put("baseVersion", version)
             put("text", textString)
             serverId?.let { put("serverId", it) }
-            put("timestamps", timestamps.save(clean))
-            put("nodeSettings", settings.save(clean))
-            put("annotationsGroup", annotations.save(clean))
+            put("timestamps", timestamps.save(includeDirty))
+            put("nodeSettings", settings.save(includeDirty))
+            put("annotationsGroup", annotations.save(includeDirty))
         }
         return ret
     }
@@ -757,6 +774,14 @@ open class Node(
         textString = value
         timestamps.edited = NodeTimestamps.now()
         touch(true)
+    }
+
+    override fun clearDirty() {
+        super.clearDirty()
+        timestamps.clearDirty()
+        settings.clearDirty()
+        annotations.clearDirty()
+        _children.values.forEach { it.clearDirty() }
     }
 
     val children: List<Node> get() = _children.values.toList()
@@ -819,9 +844,15 @@ abstract class TopLevelNode(type: NodeType) : Node(nodeType = type, parentId = R
     val labels = NodeLabels()
     val collaborators = NodeCollaborators()
 
+    override fun clearDirty() {
+        super.clearDirty()
+        labels.clearDirty()
+        collaborators.clearDirty()
+    }
+
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        colorDelegate.setRaw((raw["color"] as? String)?.let { ColorValue.fromWire(it) }
+        colorDelegate.setRaw((raw["color"] as? String)?.let { ColorValue.fromValue(it) }
             ?: ColorValue.White)
         archivedDelegate.setRaw(raw["isArchived"] as? Boolean ?: false)
         pinnedDelegate.setRaw(raw["isPinned"] as? Boolean ?: false)
@@ -841,17 +872,17 @@ abstract class TopLevelNode(type: NodeType) : Node(nodeType = type, parentId = R
         moved = "moved" in raw
     }
 
-    override fun save(clean: Boolean): MutableMap<String, Any?> {
-        val ret = super.save(clean).apply {
-            put("color", color.wire)
+    override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
+        val ret = super.save(includeDirty).apply {
+            put("color", color.value)
             put("isArchived", archived)
             put("isPinned", pinned)
             put("title", title)
         }
-        val labelWire = labels.saveWire(clean)
-        if (labelWire.isNotEmpty()) ret["labelIds"] = labelWire
+        val savedLabels = labels.saveLabels(includeDirty)
+        if (savedLabels.isNotEmpty()) ret["labelIds"] = savedLabels
 
-        val (collabs, requests) = collaborators.saveNodeCollaborators(clean)
+        val (collabs, requests) = collaborators.saveNodeCollaborators(includeDirty)
         ret["collaborators"] = collabs
         if (requests.isNotEmpty()) ret["shareRequests"] = requests
         return ret
@@ -864,7 +895,7 @@ abstract class TopLevelNode(type: NodeType) : Node(nodeType = type, parentId = R
     val drawings: List<NodeDrawing> get() = blobs.mapNotNull { it.blob as? NodeDrawing }
     val audio: List<NodeAudio> get() = blobs.mapNotNull { it.blob as? NodeAudio }
 
-    val url: String get() = "https://keep.google.com/u/0/#${type!!.wire}/$id"
+    val url: String get() = "https://keep.google.com/u/0/#${type!!.value}/$id"
 }
 
 /**
@@ -989,7 +1020,7 @@ class ListItem(
         checkedDelegate.setRaw(raw["checked"] as? Boolean ?: false)
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("parentServerId", parentServerId)
         put("superListItemId", superListItemId)
         put("checked", checked)
@@ -1038,15 +1069,15 @@ open class NodeBlob(private val _type: BlobType) : Element() {
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)
-        BlobType.fromWire(raw["type"] as String) // validate type
+        BlobType.fromValue(raw["type"] as String) // validate type
         blobId = raw["blob_id"] as? String
         mediaId = raw["media_id"] as? String
         mimeType = raw["mimetype"] as? String ?: ""
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("kind", "notes#blob")
-        put("type", _type.wire)
+        put("type", _type.value)
         blobId?.let { put("blob_id", it) }
         mediaId?.let { put("media_id", it) }
         put("mimetype", mimeType)
@@ -1061,7 +1092,7 @@ class NodeAudio : NodeBlob(BlobType.Audio) {
         super.load(raw); length = (raw["length"] as? Number)?.toInt()
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         length?.let { put("length", it) }
     }
 }
@@ -1090,7 +1121,7 @@ class NodeImage : NodeBlob(BlobType.Image) {
         extractionStatus = raw["extraction_status"] as? String ?: ""
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("width", width)
         put("height", height)
         put("byte_size", byteSize)
@@ -1120,13 +1151,18 @@ class NodeDrawingInfo : Element() {
         snapshotProtoFprint = raw["snapshotProtoFprint"] as? String ?: snapshotProtoFprint
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("drawingId", drawingId)
-        put("snapshotData", snapshot.save(clean))
+        put("snapshotData", snapshot.save(includeDirty))
         put("snapshotFingerprint", snapshotFingerprint)
         put("thumbnailGeneratedTime", NodeTimestamps.dtToStr(thumbnailGeneratedTime))
         put("inkHash", inkHash)
         put("snapshotProtoFprint", snapshotProtoFprint)
+    }
+
+    override fun clearDirty() {
+        super.clearDirty()
+        snapshot.clearDirty()
     }
 }
 
@@ -1145,10 +1181,15 @@ class NodeDrawing : NodeBlob(BlobType.Drawing) {
         }
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
         put("extracted_text", extractedText)
         put("extraction_status", extractionStatus)
-        drawingInfo?.let { put("drawingInfo", it.save(clean)) }
+        drawingInfo?.let { put("drawingInfo", it.save(includeDirty)) }
+    }
+
+    override fun clearDirty() {
+        super.clearDirty()
+        drawingInfo?.clearDirty()
     }
 
     fun getExtractedText(): String = drawingInfo?.snapshot?.extractedText ?: ""
@@ -1162,15 +1203,20 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
         blob = fromPayload(raw["blob"] as? Map<*, *>)
     }
 
-    override fun save(clean: Boolean) = super.save(clean).apply {
-        blob?.let { put("blob", it.save(clean)) }
+    override fun save(includeDirty: Boolean) = super.save(includeDirty).apply {
+        blob?.let { put("blob", it.save(includeDirty)) }
+    }
+
+    override fun clearDirty() {
+        super.clearDirty()
+        blob?.clearDirty()
     }
 
     companion object {
         fun fromPayload(raw: Map<*, *>?): NodeBlob? {
             raw ?: return null
             val t = raw["type"] as? String ?: return null
-            val blobType = BlobType.fromWireOrNull(t)
+            val blobType = BlobType.fromValueOrNull(t)
             if (blobType == null) {
                 Log.w(TAG, "Unknown blob type: $t")
                 if (DEBUG_LOGGING) {
@@ -1191,7 +1237,7 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
 
 fun nodeFromPayload(raw: Map<*, *>): Node? {
     val t = (raw["type"] as? String) ?: return null
-    val nodeType = NodeType.fromWireOrNull(t)
+    val nodeType = NodeType.fromValueOrNull(t)
     if (nodeType == null) {
         Log.w(TAG, "Unknown node type: $t")
         if (DEBUG_LOGGING) {

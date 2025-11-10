@@ -205,8 +205,10 @@ class GKeepSync {
         while (true) {
             Log.d(LOG_TAG, "Starting keep sync: $keepVersion")
 
-            val dirtyNodes = findDirtyNodes().map { it.save() }
-            val labelsUpdated = labels.values.any { it.dirty }
+            val dirtyNodeRefs = findDirtyNodes()
+            val dirtyNodes = dirtyNodeRefs.map { it.save() }
+            val dirtyLabels = labels.values.filter { it.dirty }
+            val labelsUpdated = dirtyLabels.isNotEmpty()
             val labelsPayload = if (labelsUpdated) {
                 labels.values.map { it.save() }
             } else {
@@ -232,6 +234,8 @@ class GKeepSync {
 
             keepVersion = changes.getString("toVersion")
             Log.d(LOG_TAG, "Finishing sync: $keepVersion")
+            dirtyNodeRefs.forEach { it.clearDirty() }
+            dirtyLabels.forEach { it.clearDirty() }
 
             if (!changes.optBoolean("truncated")) {
                 break
@@ -327,8 +331,8 @@ class GKeepSync {
             node.children.forEach { child -> orderedNodes += child }
         }
 
-        val serializedNodes = orderedNodes.map { it.save(clean = false) }
-        val serializedLabels = labels.values.map { it.save(clean = false) }
+        val serializedNodes = orderedNodes.map { it.save(includeDirty = true) }
+        val serializedLabels = labels.values.map { it.save(includeDirty = true) }
 
         return mapOf(
             "keep_version" to keepVersion,

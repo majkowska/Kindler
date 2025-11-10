@@ -574,7 +574,7 @@ class BlobFactoryTest {
     fun blobFactory_shouldReturnSpecificBlobTypes() {
         val image = Blob.fromPayload(
             mapOf(
-                "type" to BlobType.Image.wire,
+                "type" to BlobType.Image.value,
                 "blob_id" to "blob",
                 "media_id" to "media",
                 "mimetype" to "image/png"
@@ -582,10 +582,10 @@ class BlobFactoryTest {
         )
         assertTrue(image is NodeImage)
 
-        val drawing = Blob.fromPayload(mapOf("type" to BlobType.Drawing.wire))
+        val drawing = Blob.fromPayload(mapOf("type" to BlobType.Drawing.value))
         assertTrue(drawing is NodeDrawing)
 
-        val audio = Blob.fromPayload(mapOf("type" to BlobType.Audio.wire))
+        val audio = Blob.fromPayload(mapOf("type" to BlobType.Audio.value))
         assertTrue(audio is NodeAudio)
     }
 }
@@ -629,7 +629,7 @@ class ElementSerializationTest {
         val element = DirtyElement()
         element.value = 1
 
-        val saved = element.save(clean = false)
+        val saved = element.save(includeDirty = true)
         assertTrue(saved.containsKey("_dirty"))
         assertTrue(saved["_dirty"] as Boolean)
     }
@@ -638,7 +638,7 @@ class ElementSerializationTest {
 class NodeFactoryTest {
 
     @Test
-    fun nodeFromJson_shouldReturnNoteInstance() {
+    fun nodeFromPayload_shouldReturnNoteInstance() {
         val data = mapOf(
             "id" to "id",
             "parentId" to RootId.ID,
@@ -647,24 +647,24 @@ class NodeFactoryTest {
                 "updated" to NodeTimestamps.intToStr(0)
             ),
             "nodeSettings" to mapOf(
-                "newListItemPlacement" to NewListItemPlacementValue.Top.wire,
-                "graveyardState" to GraveyardStateValue.Collapsed.wire,
-                "checkedListItemsPolicy" to CheckedListItemsPolicyValue.Default.wire
+                "newListItemPlacement" to NewListItemPlacementValue.Top.value,
+                "graveyardState" to GraveyardStateValue.Collapsed.value,
+                "checkedListItemsPolicy" to CheckedListItemsPolicyValue.Default.value
             ),
             "annotationsGroup" to emptyMap<String, Any?>(),
             "kind" to "notes#node",
-            "type" to NodeType.Note.wire,
+            "type" to NodeType.Note.value,
             "text" to "",
             "sortValue" to 0
         )
 
-        val node = nodeFromJson(data)
+        val node = nodeFromPayload(data)
         assertTrue(node is Note)
     }
 
     @Test
-    fun nodeFromJson_shouldReturnNullWhenTypeMissing() {
-        assertNull(nodeFromJson(emptyMap<String, Any>()))
+    fun nodeFromPayload_shouldReturnNullWhenTypeMissing() {
+        assertNull(nodeFromPayload(emptyMap<String, Any>()))
     }
 }
 
@@ -680,12 +680,12 @@ private fun <T : Element> roundTrip(factory: () -> T): Pair<MutableMap<String, A
 private fun <T : Element> clean(element: T): T {
     when (element) {
         is Node -> {
-            element.save()
+            element.clearDirty()
             element.children.forEach { clean(it) }
         }
-        is NodeAnnotations -> element.save()
-        is Context -> element.save()
-        else -> element.save()
+        is NodeAnnotations -> element.clearDirty()
+        is Context -> element.clearDirty()
+        else -> element.clearDirty()
     }
     assertFalse(element.dirty)
     return element
