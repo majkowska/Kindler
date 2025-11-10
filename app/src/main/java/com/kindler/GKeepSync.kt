@@ -460,22 +460,6 @@ class GKeepSync {
         private const val GOOGLE_KEEP_APP = "com.google.android.keep"
         private const val LOG_TAG = "GKeepSync"
     }
-
-    @Throws(AuthError::class)
-    private fun getAccessToken(): AccessToken {
-        val auth = Auth()
-        val accessTokenParams = AccessTokenRequestParams
-            .withDefaultValues()
-            .masterToken(BuildConfig.MASTER_TOKEN)
-            .email(BuildConfig.GOOGLE_ACCOUNT_EMAIL)
-            .androidId(BuildConfig.GOOGLE_ANDROID_ID)
-            .scopes(GOOGLE_KEEP_SCOPES)
-            .app(GOOGLE_KEEP_APP)
-            .clientSig(BuildConfig.GOOGLE_CLIENT_SIGNATURE)
-            .build()
-
-        return auth.getAccessToken(accessTokenParams)
-    }
 }
 
 class APIAuth(private val scopes: String) {
@@ -489,14 +473,13 @@ class APIAuth(private val scopes: String) {
     private var androidId: String? = null
 
     @Throws(AuthError::class, LoginException::class)
-    fun load(email: String, masterToken: String, androidId: String): Boolean {
+    fun load(email: String, masterToken: String, androidId: String) {
         this.email = email
         this.masterToken = masterToken
         this.androidId = androidId
         this.authToken = null
 
         refresh()
-        return true
     }
 
     @Throws(AuthError::class, LoginException::class)
@@ -548,6 +531,11 @@ open class API(
     }
 
     private val client = OkHttpClient()
+    private val noRedirectClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .followRedirects(false)
+            .build()
+    }
 
     fun getAuth(): APIAuth? = auth
 
@@ -614,28 +602,20 @@ open class API(
             set(HEADER_AUTHORIZATION, "OAuth $authToken")
         }.build()
 
-        val method = request.method.uppercase()
+        val method = request.method
         val requestBuilder = Request.Builder()
             .url(request.url)
             .headers(headers)
 
         when (method) {
-            "GET" -> requestBuilder.get()
-            "POST" -> {
-                val body = request.json?.toString()?.toRequestBody(JSON_MEDIA_TYPE)
-                    ?: throw IllegalArgumentException("POST requests require a JSON body")
+            HttpMethod.Get -> requestBuilder.get()
+            is HttpMethod.Post -> {
+                val body = method.body.toString().toRequestBody(JSON_MEDIA_TYPE)
                 requestBuilder.post(body)
             }
-            else -> requestBuilder.method(method, null)
         }
 
-        val callClient = if (request.allowRedirects) {
-            client
-        } else {
-            client.newBuilder()
-                .followRedirects(false)
-                .build()
-        }
+        val callClient = if (request.allowRedirects) client else noRedirectClient
 
         return callClient.newCall(requestBuilder.build()).execute()
     }
@@ -684,8 +664,7 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
         return send(
             APIRequest(
                 url = baseUrl + "changes",
-                method = "POST",
-                json = params
+                method = HttpMethod.Post(params)
             )
         )
     }
@@ -727,8 +706,6 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
         }
     }
 
-    private fun currentEpochSeconds(): Double = System.currentTimeMillis() / 1000.0
-
     private fun generateSessionId(epochSeconds: Double): String {
         val timestampMillis = (epochSeconds * 1000).toLong()
         val randomComponent = Random.nextLong(1_000_000_000L, 10_000_000_000L)
@@ -736,11 +713,15 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
     }
 }
 
+sealed class HttpMethod(val verb: String) {
+    object Get : HttpMethod("GET")
+    data class Post(val body: JSONObject) : HttpMethod("POST")
+}
+
 data class APIRequest(
     val url: String,
-    val method: String,
+    val method: HttpMethod,
     val headers: Map<String, String>? = null,
-    val json: JSONObject? = null,
     val allowRedirects: Boolean = true
 )
 

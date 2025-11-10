@@ -29,9 +29,7 @@ private const val TAG = "GKeepModels"
 private const val SORT_MIN = 1_000_000_000L
 private const val SORT_MAX = 9_999_999_999L
 private const val ALPHANUMERIC_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789"
-private const val RANDOM_ID_LENGTH = 12
-private const val DEBUG_LOGGING = false
-
+private const val RANDOM_ID_LENGTH = 1
 /* ========== Exceptions (stand-ins for .exception module) ========== */
 
 class MergeException(message: String = "Merge conflict") : RuntimeException(message)
@@ -39,8 +37,7 @@ class MergeException(message: String = "Merge conflict") : RuntimeException(mess
 class InvalidException(message: String) : RuntimeException(message)
 
 class LabelException(message: String) : RuntimeException(message)
-
-private fun currentEpochSeconds(): Double = System.currentTimeMillis() / 1000.0
+fun currentEpochSeconds(): Double = System.currentTimeMillis() / 1000.0
 
 /* ========== Enums ========== */
 
@@ -199,12 +196,11 @@ class DirtyDelegate<T>(
  * Base class for note annotations (web links, categories, task assists).
  */
 sealed class Annotation : Element() {
-    var id: String? = genId()
+    var id: String = genId()
     override fun load(raw: Map<*, *>) {
-        super.load(raw); id = raw["id"] as? String
+        super.load(raw); id = raw["id"] as String
     }
     override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
-        if (id == null) return mutableMapOf()
         return super.save(includeDirty).apply { put("id", id) }
     }
 
@@ -328,7 +324,7 @@ class NodeAnnotations : Element() {
         val arr = raw["annotations"] as? List<*> ?: return
         for (item in arr) {
             val ann = fromPayload(item as? Map<*, *> ?: continue) ?: continue
-            val id = ann.id ?: continue
+            val id = ann.id
             annotations[id] = ann
         }
     }
@@ -366,7 +362,7 @@ class NodeAnnotations : Element() {
         get() = annotations.values.filterIsInstance<WebLink>()
 
     fun append(annotation: Annotation): Annotation {
-        annotations[annotation.id!!] = annotation
+        annotations[annotation.id] = annotation
         dirtyFlag = true
         return annotation
     }
@@ -712,12 +708,12 @@ open class Node(
     var id: String = idString ?: generateId(Instant.now().toEpochMilli())
     var serverId: String? = null
     var type: NodeType? = nodeType
+    override val timestamps: NodeTimestamps = NodeTimestamps(currentEpochSeconds())
     private val sortDelegate = dirtyProperty(Random.nextLong(SORT_MIN, SORT_MAX)) { touch() }
     var sort: Long by sortDelegate
     private var version: Long? = null
     protected var textString: String = ""
     private val _children: MutableMap<String, Node> = linkedMapOf()
-    override val timestamps: NodeTimestamps = NodeTimestamps(currentEpochSeconds())
     val settings = NodeSettings()
     val annotations = NodeAnnotations()
     var parent: Node? = null
@@ -756,7 +752,7 @@ open class Node(
         val ret = super.save(includeDirty).apply {
             put("id", id)
             put("kind", "notes#node")
-            put("type", type!!.value)
+            put("type", requireNodeType().value)
             put("parentId", parentId)
             put("sortValue", sort)
             if (!moved && version != null) put("baseVersion", version)
@@ -807,6 +803,9 @@ open class Node(
     override val dirty: Boolean
         get() = super.dirty || timestamps.dirty || annotations.dirty ||
             settings.dirty || children.any { it.dirty }
+
+    protected fun requireNodeType(): NodeType =
+        type ?: throw IllegalStateException("Node $id is missing a type")
 
     companion object {
         private fun generateId(ms: Long): String {
@@ -895,7 +894,7 @@ abstract class TopLevelNode(type: NodeType) : Node(nodeType = type, parentId = R
     val drawings: List<NodeDrawing> get() = blobs.mapNotNull { it.blob as? NodeDrawing }
     val audio: List<NodeAudio> get() = blobs.mapNotNull { it.blob as? NodeAudio }
 
-    val url: String get() = "https://keep.google.com/u/0/#${type!!.value}/$id"
+    val url: String get() = "https://keep.google.com/u/0/#${requireNodeType().value}/$id"
 }
 
 /**
@@ -1129,7 +1128,6 @@ class NodeImage : NodeBlob(BlobType.Image) {
         put("extraction_status", extractionStatus)
     }
 
-    val url: String get() = throw NotImplementedError("URL generation depends on external service")
 }
 
 class NodeDrawingInfo : Element() {
@@ -1219,7 +1217,7 @@ class Blob(parentId: String? = null) : Node(nodeType = NodeType.Blob, parentId =
             val blobType = BlobType.fromValueOrNull(t)
             if (blobType == null) {
                 Log.w(TAG, "Unknown blob type: $t")
-                if (DEBUG_LOGGING) {
+                if (DEBUG) {
                     Log.d(TAG, "Skipping blob payload: $raw")
                 }
                 return null
@@ -1240,7 +1238,7 @@ fun nodeFromPayload(raw: Map<*, *>): Node? {
     val nodeType = NodeType.fromValueOrNull(t)
     if (nodeType == null) {
         Log.w(TAG, "Unknown node type: $t")
-        if (DEBUG_LOGGING) {
+        if (DEBUG) {
             Log.d(TAG, "Skipping node payload: $raw")
         }
         return null

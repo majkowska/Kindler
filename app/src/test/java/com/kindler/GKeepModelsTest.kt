@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class GKeepAnnotationsTest {
@@ -327,6 +328,17 @@ class NodeModelTest {
         node.deleted = false
         assertTrue(node.dirty)
         assertNull(node.timestamps.deleted)
+    }
+
+    @Test
+    fun node_saveShouldRequireType() {
+        val node = Node()
+        try {
+            node.save(includeDirty = true)
+            fail("Expected IllegalStateException when saving node without type")
+        } catch (_: IllegalStateException) {
+            // Expected
+        }
     }
 }
 
