@@ -29,7 +29,7 @@ private const val TAG = "GKeepModels"
 private const val SORT_MIN = 1_000_000_000L
 private const val SORT_MAX = 9_999_999_999L
 private const val ALPHANUMERIC_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789"
-private const val RANDOM_ID_LENGTH = 1
+private const val RANDOM_ID_LENGTH = 12
 /* ========== Exceptions (stand-ins for .exception module) ========== */
 
 class MergeException(message: String = "Merge conflict") : RuntimeException(message)
