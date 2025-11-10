@@ -11,7 +11,7 @@ material = "1.12.0"
 activity = "1.8.0"
 constraintlayout = "2.1.4"
 mockitoCore = "5.11.0"
-robolectric = "4.12.2"
+robolectric = "4.16"
 mockk = "1.13.12"
 okhttp = "4.12.0"
 

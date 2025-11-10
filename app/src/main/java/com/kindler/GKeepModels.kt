@@ -352,7 +352,7 @@ class NodeAnnotations : Element() {
             if (value == null) {
                 if (node != null) annotations.remove(node.id)
             } else {
-                val n = node ?: Category().also { annotations[it.id!!] = it }
+                val n = node ?: Category().also { annotations[it.id] = it }
                 n.category = value
             }
             dirtyFlag = true
@@ -1000,7 +1000,7 @@ class ListNode : TopLevelNode(NodeType.List) {
  */
 class ListItem(
     parentId: String? = null,
-    val parentServerId: String? = null,
+    var parentServerId: String? = null,
     var superListItemId: String? = null
 ) : Node(nodeType = NodeType.ListItem, parentId = parentId) {
 
@@ -1016,6 +1016,7 @@ class ListItem(
         super.load(raw)
         prevSuperListItemId = superListItemId
         superListItemId = raw["superListItemId"] as? String
+        parentServerId = raw["parentServerId"] as? String
         checkedDelegate.setRaw(raw["checked"] as? Boolean ?: false)
     }
 
