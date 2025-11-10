@@ -368,7 +368,7 @@ class NodeAnnotations : Element() {
     }
 
     fun remove(annotation: Annotation) {
-        annotation.id?.let { annotations.remove(it) }
+        annotation.id.let { annotations.remove(it) }
         dirtyFlag = true
     }
 
