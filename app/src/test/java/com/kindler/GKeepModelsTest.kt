@@ -355,9 +355,9 @@ class TimestampsMixinTest {
 
     private class TestElement : Element(), TimestampsMixin {
         override val timestamps = NodeTimestamps(0.0)
-        override var dirtyFlagForMixin: Boolean
-            get() = dirtyFlag
-            set(value) { dirtyFlag = value }
+        override fun markTimestampsDirty() {
+            dirtyFlag = true
+        }
     }
 
     @Test
