@@ -2,10 +2,12 @@ package com.kindler
 
 import io.mockk.every
 import io.mockk.mockk
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -157,6 +159,72 @@ class GKeepSyncStateTest {
         assertNotNull(dirtyNote)
         val dirtyLabel = secondLabels.firstOrNull { it["mainId"] == label.id }
         assertNotNull(dirtyLabel)
+    }
+
+    @Test
+    fun sync_shouldRemoveDeletedNodeAndLabel() {
+        val fixture = SyncStateFixtures.noteAndListState(version = "KEEP_VERSION_DELETE")
+        val keepApi = mockk<KeepAPI>()
+        lateinit var capturedNodes: List<Map<String, Any?>>
+        lateinit var capturedLabels: List<Map<String, Any?>>
+        var capturedTargetVersion: String? = null
+
+        every { keepApi.changes(any(), any(), any()) } answers {
+            val args = invocation.args
+            @Suppress("UNCHECKED_CAST")
+            capturedTargetVersion = args[0] as String?
+            @Suppress("UNCHECKED_CAST")
+            capturedNodes = args[1] as List<Map<String, Any?>>
+            @Suppress("UNCHECKED_CAST")
+            capturedLabels = args[2] as List<Map<String, Any?>>
+
+            JSONObject()
+                .put("toVersion", "KEEP_VERSION_DELETE_DONE")
+                .put("truncated", false)
+                .put(
+                    "nodes",
+                    JSONArray().put(
+                        JSONObject().put("id", fixture.noteId)
+                    )
+                )
+                .put(
+                    "userInfo",
+                    JSONObject().put(
+                        "labels",
+                        JSONArray().put(
+                            JSONObject()
+                                .put("mainId", fixture.labelsByName["Errands"])
+                                .put("name", "Errands")
+                        )
+                    )
+                )
+        }
+
+        val sync = GKeepSync()
+        sync.restore(fixture.state)
+        sync.injectKeepApiForTest(keepApi)
+
+        val note = sync.get(fixture.noteId) as Note
+        val booksLabel = sync.findLabel("Books")
+        assertNotNull(booksLabel)
+
+        note.deleted = true
+        assertTrue(note.deleted)
+        assertTrue(note.dirty)
+
+        sync.sync()
+
+        assertEquals(fixture.state["keep_version"], capturedTargetVersion)
+        val deletedPayload = capturedNodes.firstOrNull { it["id"] == fixture.noteId }
+        assertNotNull(deletedPayload)
+        val timestamps = deletedPayload!!["timestamps"] as Map<*, *>
+        assertNotNull(timestamps["deleted"])
+        assertTrue(capturedLabels.isEmpty())
+
+        assertNull(sync.get(fixture.noteId))
+        assertNotNull(sync.get(fixture.listId))
+        assertNull(sync.findLabel("Books"))
+        assertNotNull(sync.findLabel("Errands"))
     }
 }
 
