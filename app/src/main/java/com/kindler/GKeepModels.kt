@@ -198,7 +198,8 @@ class DirtyDelegate<T>(
 sealed class Annotation : Element() {
     var id: String = genId()
     override fun load(raw: Map<*, *>) {
-        super.load(raw); id = raw["id"] as String
+        super.load(raw)
+        (raw["id"] as? String)?.let { id = it }
     }
     override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
         return super.save(includeDirty).apply { put("id", id) }
@@ -288,7 +289,7 @@ class Context : Annotation() {
         for ((k, v) in ctx) {
             val key = k as? String ?: continue
             val vMap = v as? Map<*, *> ?: continue
-            val ann = NodeAnnotations.fromPayload(mapOf(key to vMap))
+            val ann = NodeAnnotations.fromPayload(vMap)
             if (ann != null) entries[key] = ann
         }
     }
@@ -296,9 +297,8 @@ class Context : Annotation() {
     override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
         val ret = super.save(includeDirty)
         val ctx = mutableMapOf<String, Any?>()
-        entries.values.forEach { entry ->
-            // merge each saved sub-annotation (e.g., {"webLink": {...}}) into context
-            ctx.putAll(entry.save(includeDirty))
+        entries.forEach { entry ->
+            ctx.put(entry.key, entry.value.save(includeDirty))
         }
         ret["context"] = ctx
         return ret
@@ -516,10 +516,11 @@ class NodeCollaborators : Element() {
     }.keys.toList()
 
     fun load(collaboratorsRaw: List<Map<*, *>>, requestsRawWithFlag: MutableList<Any?>) {
-        dirtyFlag = if (requestsRawWithFlag.isNotEmpty() &&
-            requestsRawWithFlag.last() is Boolean
+        val requests = requestsRawWithFlag.toMutableList()
+        dirtyFlag = if (requests.isNotEmpty() &&
+            requests.last() is Boolean
         ) {
-            requestsRawWithFlag.removeAt(requestsRawWithFlag.lastIndex) as Boolean
+            requests.removeAt(requests.lastIndex) as Boolean
         } else {
             false
         }
@@ -532,7 +533,7 @@ class NodeCollaborators : Element() {
             collaborators[email] = RoleValue.fromValue(roleValue)
         }
 
-        requestsRawWithFlag.forEach { r ->
+        requests.forEach { r ->
             val rm = r as? Map<*, *> ?: return@forEach
             val email = rm["email"] as? String ?: return@forEach
             val type = rm["type"] as? String ?: return@forEach
@@ -564,23 +565,19 @@ class NodeCollaborators : Element() {
     }
 }
 
-class Label : Element() {
+class Label : Element(), TimestampsMixin {
     var id: String = generateId(Instant.now().epochSecond)
 
     private val nameDelegate = dirtyProperty("", ::touchEdited)
     var name: String by nameDelegate
 
-    val timestamps = NodeTimestamps(currentEpochSeconds())
+    override val timestamps = NodeTimestamps(currentEpochSeconds())
+    override fun markTimestampsDirty() {
+        dirtyFlag = true
+    }
 
     private val mergedDelegate = dirtyProperty(NodeTimestamps.zero(), ::touchUnedited)
     var merged: ZonedDateTime by mergedDelegate
-
-    private fun touch(edited: Boolean = false) {
-        dirtyFlag = true
-        val dt = NodeTimestamps.now()
-        timestamps.updated = dt
-        if (edited) timestamps.edited = dt
-    }
 
     private fun touchEdited() = touch(true)
     private fun touchUnedited() = touch()
@@ -674,10 +671,10 @@ class NodeLabels : Element() {
  */
 interface TimestampsMixin {
     val timestamps: NodeTimestamps
-    var dirtyFlagForMixin: Boolean
+    fun markTimestampsDirty()
 
     fun touch(edited: Boolean = false) {
-        dirtyFlagForMixin = true
+        markTimestampsDirty()
         val dt = NodeTimestamps.now()
         timestamps.updated = dt
         if (edited) timestamps.edited = dt
@@ -725,9 +722,9 @@ open class Node(
         else -> null
     }
 
-    override var dirtyFlagForMixin: Boolean
-        get() = dirtyFlag
-        set(v) { dirtyFlag = v }
+    override fun markTimestampsDirty() {
+        dirtyFlag = true
+    }
 
     override fun load(raw: Map<*, *>) {
         super.load(raw)

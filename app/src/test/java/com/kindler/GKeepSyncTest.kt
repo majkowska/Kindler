@@ -226,6 +226,50 @@ class GKeepSyncStateTest {
         assertNull(sync.findLabel("Books"))
         assertNotNull(sync.findLabel("Errands"))
     }
+
+    @Test
+    fun deleteLabel_shouldMarkLabelDeletedAndDetachFromNotes() {
+        val sync = GKeepSync()
+        val label = sync.createLabel("Archive")
+        val note = sync.createNote(title = "Packing list", text = "Passport")
+        note.labels.add(label)
+
+        sync.deleteLabel(label.id)
+
+        assertTrue(label.deleted)
+        assertTrue(label.dirty)
+        assertTrue(note.labels.all().isEmpty())
+        assertNull(sync.findLabel("Archive"))
+
+        val serializedLabels = sync.dump()["labels"] as? List<*>
+        assertNotNull(serializedLabels)
+        @Suppress("UNCHECKED_CAST")
+        val deletedPayload = serializedLabels!!
+            .mapNotNull { it as? Map<*, *> }
+            .firstOrNull { it["mainId"] == label.id }
+        assertNotNull(deletedPayload)
+        @Suppress("UNCHECKED_CAST")
+        val timestamps = deletedPayload!!["timestamps"] as Map<String, Any?>
+        assertNotNull(timestamps["deleted"])
+    }
+
+    @Test
+    fun findLabel_shouldBeCaseInsensitiveAndIgnoreDeletedLabels() {
+        val sync = GKeepSync()
+        val active = sync.createLabel("Projects")
+        val archived = sync.createLabel("Archive")
+
+        val foundActive = sync.findLabel("projects")
+        assertSame(active, foundActive)
+
+        sync.deleteLabel(archived.id)
+
+        assertNull(sync.findLabel("ARCHIVE"))
+
+        // Ensure the deleted label still exists in the serialized state for syncing.
+        val serializedLabels = sync.dump()["labels"] as? List<*>
+        assertTrue(serializedLabels!!.any { (it as? Map<*, *>)?.get("mainId") == archived.id })
+    }
 }
 
 /**

@@ -358,7 +358,7 @@ class GKeepSync {
      */
     fun findLabel(name: String): Label? {
         val target = name.lowercase()
-        return labels.values.firstOrNull { it.name.lowercase() == target }
+        return labels.values.firstOrNull { !it.deleted && it.name.lowercase() == target }
     }
 
     /**
@@ -389,6 +389,18 @@ class GKeepSync {
         label.name = name
         labels[label.id] = label
         return label
+    }
+
+    /**
+     * Delete an existing label by ID and detach it from all notes.
+     */
+    fun deleteLabel(labelId: String) {
+        val label = labels[labelId] ?: return
+        label.deleted = true
+        nodes.values.forEach { node ->
+            val topLevelNode = node as? TopLevelNode ?: return@forEach
+            topLevelNode.labels.remove(label)
+        }
     }
 
     /**
