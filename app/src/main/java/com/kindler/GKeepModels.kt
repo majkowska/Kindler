@@ -198,7 +198,8 @@ class DirtyDelegate<T>(
 sealed class Annotation : Element() {
     var id: String = genId()
     override fun load(raw: Map<*, *>) {
-        super.load(raw); id = raw["id"] as String
+        super.load(raw)
+        (raw["id"] as? String)?.let { id = it }
     }
     override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
         return super.save(includeDirty).apply { put("id", id) }
@@ -296,8 +297,8 @@ class Context : Annotation() {
     override fun save(includeDirty: Boolean): MutableMap<String, Any?> {
         val ret = super.save(includeDirty)
         val ctx = mutableMapOf<String, Any?>()
-        entries.forEach { (key, entry) ->
-            ctx[key] = entry.save(includeDirty)
+        entries.forEach { entry ->
+            ctx.put(entry.key, entry.value.save(includeDirty))
         }
         ret["context"] = ctx
         return ret
