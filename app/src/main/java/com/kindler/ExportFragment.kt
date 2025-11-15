@@ -22,6 +22,7 @@ class ExportFragment : Fragment() {
     }
 
     private lateinit var exportToCsvButton: Button
+    private lateinit var exportToKeepButton: Button
     private lateinit var highlightsFileStore: HighlightsFileStore
     private lateinit var highlightsCsvExporter: HighlightsCsvExporter
 
@@ -51,7 +52,39 @@ class ExportFragment : Fragment() {
         exportToCsvButton.setOnClickListener {
             startCsvExportFlow()
         }
+
+        exportToKeepButton = view.findViewById(R.id.exportToKeepButton)
+        exportToKeepButton.setOnClickListener {
+            startKeepExportFlow()
+        }
     }
+
+     private fun startKeepExportFlow() {
+         val gKeepSync = GKeepSync()
+         try {
+             gKeepSync.authenticate(BuildConfig.GOOGLE_ACCOUNT_EMAIL, BuildConfig.MASTER_TOKEN)
+         } catch (e: Exception) {
+             Log.e(TAG, "Failed to authenticate with Google Keep", e)
+             Toast.makeText(
+                requireContext(),
+                "Failed to authenticate with Google Keep",
+                Toast.LENGTH_LONG
+            ).show()
+         }
+         val note = gKeepSync.createNote("Test kindler note", "Test kindler note content")
+         val label = gKeepSync.createLabel("Kindler export")
+        note.labels.add(label)
+         try {
+             gKeepSync.sync()
+         } catch (e: Exception) {
+             Log.e(TAG, "Failed to sync with Google Keep", e)
+             Toast.makeText(
+                requireContext(),
+                "Failed to sync with Google Keep",
+                Toast.LENGTH_LONG
+            ).show()
+         }
+     }
 
     private fun startCsvExportFlow() {
         val hasHighlights = try {
