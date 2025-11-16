@@ -436,7 +436,14 @@ class NodeTimestamps(createTime: Double? = null) : Element() {
     }
 
     companion object {
-        private val FMT: DateTimeFormatter = DateTimeFormatterBuilder()
+        private val PARSE_FMT: DateTimeFormatter = DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+            .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+            .appendLiteral('Z')
+            .toFormatter()
+            .withZone(ZoneOffset.UTC)
+
+        private val OUTPUT_FMT: DateTimeFormatter = DateTimeFormatterBuilder()
             .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
             .appendLiteral('.')
             .appendFraction(ChronoField.MICRO_OF_SECOND, 6, 6, false)
@@ -444,8 +451,8 @@ class NodeTimestamps(createTime: Double? = null) : Element() {
             .toFormatter()
             .withZone(ZoneOffset.UTC)
 
-        fun strToDt(s: String): ZonedDateTime = ZonedDateTime.parse(s, FMT)
-        fun dtToStr(dt: ZonedDateTime): String = dt.format(FMT)
+        fun strToDt(s: String): ZonedDateTime = ZonedDateTime.parse(s, PARSE_FMT)
+        fun dtToStr(dt: ZonedDateTime): String = dt.format(OUTPUT_FMT)
         fun fromEpoch(sec: Double): ZonedDateTime {
             val seconds = sec.toLong()
             val nanos = ((sec - seconds) * 1_000_000_000).roundToLong()
