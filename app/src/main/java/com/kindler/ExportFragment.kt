@@ -10,6 +10,10 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.io.OutputStreamWriter
@@ -60,29 +64,42 @@ class ExportFragment : Fragment() {
     }
 
      private fun startKeepExportFlow() {
-         val gKeepSync = GKeepSync()
-         try {
-             gKeepSync.authenticate(BuildConfig.GOOGLE_ACCOUNT_EMAIL, BuildConfig.MASTER_TOKEN)
-         } catch (e: Exception) {
-             Log.e(TAG, "Failed to authenticate with Google Keep", e)
-             Toast.makeText(
-                requireContext(),
-                "Failed to authenticate with Google Keep",
-                Toast.LENGTH_LONG
-            ).show()
-         }
-         val note = gKeepSync.createNote("Test kindler note", "Test kindler note content")
-         val label = gKeepSync.createLabel("Kindler export")
-        note.labels.add(label)
-         try {
-             gKeepSync.sync()
-         } catch (e: Exception) {
-             Log.e(TAG, "Failed to sync with Google Keep", e)
-             Toast.makeText(
-                requireContext(),
-                "Failed to sync with Google Keep",
-                Toast.LENGTH_LONG
-            ).show()
+         exportToKeepButton.isEnabled = false
+
+         viewLifecycleOwner.lifecycleScope.launch {
+             val result = withContext(Dispatchers.IO) {
+                 runCatching {
+                     val keepSync = GKeepSync()
+                     keepSync.authenticate(BuildConfig.GOOGLE_ACCOUNT_EMAIL, BuildConfig.MASTER_TOKEN)
+
+                     val note = keepSync.createNote("Test kindler note", "Test kindler note content")
+                     val label = keepSync.createLabel("Kindler export")
+                     note.labels.add(label)
+
+                     keepSync.sync()
+                 }
+             }
+
+             if (!isAdded) {
+                 return@launch
+             }
+
+             exportToKeepButton.isEnabled = true
+
+             result.onSuccess {
+                 Toast.makeText(
+                     requireContext(),
+                     "Exported note to Google Keep",
+                     Toast.LENGTH_SHORT
+                 ).show()
+             }.onFailure { error ->
+                 Log.e(TAG, "Failed to export note to Google Keep", error)
+                 Toast.makeText(
+                     requireContext(),
+                     "Failed to export note to Google Keep",
+                     Toast.LENGTH_LONG
+                 ).show()
+             }
          }
      }
 

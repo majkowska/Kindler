@@ -1,19 +1,20 @@
 package com.kindler
 
 import android.util.Log
-import io.github.rukins.gpsoauth.Auth
-import io.github.rukins.gpsoauth.exception.AuthError
-import io.github.rukins.gpsoauth.model.AccessToken
-import io.github.rukins.gpsoauth.model.AccessTokenRequestParams
+import okhttp3.CipherSuite
+import okhttp3.ConnectionSpec
 import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.TlsVersion
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import svarzee.gps.gpsoauth.Gpsoauth
+import svarzee.gps.gpsoauth.Gpsoauth.TokenRequestFailed
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.util.concurrent.TimeUnit
@@ -196,7 +197,7 @@ class GKeepSync {
     @Throws(
         APIException::class,
         APIAuth.LoginException::class,
-        AuthError::class,
+        TokenRequestFailed::class,
         IOException::class,
         ResyncRequiredException::class,
         UpgradeRecommendedException::class
@@ -246,7 +247,7 @@ class GKeepSync {
     @Throws(
         APIException::class,
         APIAuth.LoginException::class,
-        AuthError::class,
+        TokenRequestFailed::class,
         IOException::class,
         ResyncRequiredException::class,
         UpgradeRecommendedException::class
@@ -267,7 +268,7 @@ class GKeepSync {
     @Throws(
         APIException::class,
         APIAuth.LoginException::class,
-        AuthError::class,
+        TokenRequestFailed::class,
         IOException::class,
         ResyncRequiredException::class,
         UpgradeRecommendedException::class
@@ -287,7 +288,7 @@ class GKeepSync {
     @Throws(
         APIException::class,
         APIAuth.LoginException::class,
-        AuthError::class,
+        TokenRequestFailed::class,
         IOException::class,
         ResyncRequiredException::class,
         UpgradeRecommendedException::class
@@ -477,14 +478,39 @@ class GKeepSync {
 class APIAuth(private val scopes: String) {
     companion object {
         private const val GOOGLE_KEEP_APP = "com.google.android.keep"
+        private val GPSOAUTH_CONNECTION_SPEC = ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
+            .cipherSuites(
+                CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+                CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+                CipherSuite.TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
+                CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+                CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+                CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+                CipherSuite.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+                CipherSuite.TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
+                CipherSuite.TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
+                CipherSuite.TLS_RSA_WITH_AES_128_GCM_SHA256,
+                CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA,
+                CipherSuite.TLS_RSA_WITH_AES_256_CBC_SHA,
+                CipherSuite.TLS_RSA_WITH_3DES_EDE_CBC_SHA
+            )
+            .tlsVersions(TlsVersion.TLS_1_2)
+            .build()
+
+        private fun createGpsoauthHttpClient(): OkHttpClient {
+            return OkHttpClient.Builder()
+                .connectionSpecs(listOf(GPSOAUTH_CONNECTION_SPEC))
+                .build()
+        }
     }
 
+    private val gpsoauth = Gpsoauth(createGpsoauthHttpClient())
     private var authToken: String? = null
     private var email: String? = null
     private var masterToken: String? = null
     private var androidId: String? = null
 
-    @Throws(AuthError::class, LoginException::class)
+    @Throws(TokenRequestFailed::class, LoginException::class)
     fun load(email: String, masterToken: String, androidId: String) {
         this.email = email
         this.masterToken = masterToken
@@ -494,29 +520,21 @@ class APIAuth(private val scopes: String) {
         refresh()
     }
 
-    @Throws(AuthError::class, LoginException::class)
+    @Throws(TokenRequestFailed::class, LoginException::class)
     fun refresh(): String {
         val email = this.email ?: throw LoginException("Email is not set")
         val masterToken = this.masterToken ?: throw LoginException("Master token is not set")
         val androidId = this.androidId ?: throw LoginException("Device id is not set")
 
-        val accessTokenParams = AccessTokenRequestParams
-            .withDefaultValues()
-            .masterToken(masterToken)
-            .email(email)
-            .androidId(androidId)
-            .scopes(scopes)
-            .app(GOOGLE_KEEP_APP)
-            .clientSig(BuildConfig.GOOGLE_CLIENT_SIGNATURE)
-            .build()
-
-        val accessToken: AccessToken = Auth().getAccessToken(accessTokenParams)
-        val token = accessToken.accessToken
-
-        if (token.isNullOrBlank()) {
-            val errorMessage = accessToken.issueAdvice ?: "Unable to refresh OAuth token"
-            throw LoginException(errorMessage)
-        }
+        val accessToken = gpsoauth.performOAuthForToken(
+            email,
+            masterToken,
+            androidId,
+            scopes,
+            GOOGLE_KEEP_APP,
+            BuildConfig.GOOGLE_CLIENT_SIGNATURE
+        )
+        val token = accessToken.token
 
         authToken = token
         return token
@@ -555,7 +573,7 @@ open class API(
         this.auth = auth
     }
 
-    @Throws(APIException::class, APIAuth.LoginException::class, AuthError::class, IOException::class)
+    @Throws(APIException::class, APIAuth.LoginException::class, TokenRequestFailed::class, IOException::class)
     fun send(request: APIRequest): JSONObject {
         var attempts = 0
         var delaySeconds = INITIAL_DELAY_SECONDS
@@ -655,7 +673,7 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
 
     private val sessionId: String = generateSessionId(currentEpochSeconds())
 
-    @Throws(APIException::class, APIAuth.LoginException::class, AuthError::class, IOException::class)
+    @Throws(APIException::class, APIAuth.LoginException::class, TokenRequestFailed::class, IOException::class)
     fun changes(
         targetVersion: String? = null,
         nodes: List<Map<String, Any?>> = emptyList(),
