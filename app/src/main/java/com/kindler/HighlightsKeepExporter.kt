@@ -4,7 +4,9 @@ import svarzee.gps.gpsoauth.Gpsoauth.TokenRequestFailed
 import java.io.IOException
 
 class HighlightsKeepExporter(
-    private val highlightsFileStore: HighlightsFileStore
+    private val highlightsFileStore: HighlightsFileStore,
+    private val keepSync: GKeepSync = GKeepSync(),
+    private val labelName: String = "Kindler export"
 ) {
 
     @Throws(
@@ -16,10 +18,8 @@ class HighlightsKeepExporter(
         UpgradeRecommendedException::class
     )
     fun exportToKeep(email: String, masterToken: String) {
-        val keepSync = GKeepSync()
         keepSync.authenticate(email, masterToken)
 
-        val labelName = "Kindler export"
         val label = keepSync.findLabel(labelName) ?: keepSync.createLabel(labelName)
 
         var fromStart = true
