@@ -270,6 +270,41 @@ class GKeepSyncStateTest {
         val serializedLabels = sync.dump()["labels"] as? List<*>
         assertTrue(serializedLabels!!.any { (it as? Map<*, *>)?.get("mainId") == archived.id })
     }
+
+    @Test
+    fun createNote_shouldRespectCustomIdAndRegisterNode() {
+        val sync = GKeepSync()
+        val customId = "asin.hash"
+
+        val note = sync.createNote(title = "My Book", text = "Excerpt", id = customId)
+
+        assertEquals(customId, note.id)
+        assertSame(note, sync.get(customId))
+
+        @Suppress("UNCHECKED_CAST")
+        val serializedNodes = sync.dump()["nodes"] as List<MutableMap<String, Any?>>
+        val notePayload = serializedNodes.firstOrNull { it["id"] == customId }
+        assertNotNull(notePayload)
+        assertEquals("My Book", notePayload!!["title"])
+    }
+
+    @Test
+    fun createNote_withCustomId_shouldAssignTextChildToCustomParent() {
+        val sync = GKeepSync()
+        val customId = "asin.hash-two"
+
+        val note = sync.createNote(text = "Highlighted passage", id = customId)
+
+        val textItem = note.children.filterIsInstance<ListItem>().single()
+        assertEquals(customId, textItem.parentId)
+        assertSame(note, textItem.parent)
+
+        @Suppress("UNCHECKED_CAST")
+        val serializedNodes = sync.dump()["nodes"] as List<MutableMap<String, Any?>>
+        val textPayload = serializedNodes.firstOrNull { it["id"] == textItem.id }
+        assertNotNull(textPayload)
+        assertEquals(customId, textPayload!!["parentId"])
+    }
 }
 
 /**
