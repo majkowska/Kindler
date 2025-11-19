@@ -365,8 +365,11 @@ class GKeepSync {
     /**
      * Create a new note and register it for syncing.
      */
-    fun createNote(title: String? = null, text: String? = null): Note {
+    fun createNote(title: String? = null, text: String? = null, id: String? = null): Note {
         val node = Note()
+        if (id != null) {
+            node.id = id
+        }
         if (title != null) {
             node.title = title
         }
