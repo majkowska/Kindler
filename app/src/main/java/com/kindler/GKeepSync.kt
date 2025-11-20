@@ -276,7 +276,7 @@ class GKeepSync {
     fun authenticate(
         email: String,
         masterToken: String,
-        state: Map<String, Any?>? = null,
+        state: String? = null,
         sync: Boolean = true,
         androidId: String? = null
     ) {
@@ -293,7 +293,7 @@ class GKeepSync {
         ResyncRequiredException::class,
         UpgradeRecommendedException::class
     )
-    fun load(auth: APIAuth, state: Map<String, Any?>? = null, sync: Boolean = true) {
+    fun load(auth: APIAuth, state: String? = null, sync: Boolean = true) {
         keepApi.setAuth(auth)
 
         state?.let { restore(it) }
@@ -305,25 +305,29 @@ class GKeepSync {
     /**
      * Restore a previously serialized state of labels, nodes, and Keep version.
      */
-    fun restore(state: Map<String, Any?>) {
+    fun restore(stateJson: String) {
         clear()
 
-        val labelsArray = toJsonArray(state["labels"], "labels")
-        val nodesArray = toJsonArray(state["nodes"], "nodes")
+        val state = JSONObject(stateJson)
+        val labelsArray = toJsonArray(state.opt("labels"), "labels")
+        val nodesArray = toJsonArray(state.opt("nodes"), "nodes")
 
         parseUserInfo(JSONObject().apply { put("labels", labelsArray) })
         parseNodes(nodesArray)
 
-        val versionValue = (state["keep_version"] ?: state["keepVersion"])
+        val versionValue = (state.opt("keep_version") ?: state.opt("keepVersion"))
             ?: throw IllegalArgumentException("State missing keep_version")
-        keepVersion = versionValue as? String
-            ?: throw IllegalArgumentException("keep_version must be a String")
+        keepVersion = when (versionValue) {
+            JSONObject.NULL -> null
+            is String -> versionValue
+            else -> throw IllegalArgumentException("keep_version must be a String")
+        }
     }
 
     /**
      * Serialize Keep state for persistence.
      */
-    fun dump(): Map<String, Any?> {
+    fun dump(): String {
         val rootNode = nodes[RootId.ID]
         val orderedNodes = mutableListOf<Node>()
 
@@ -335,11 +339,11 @@ class GKeepSync {
         val serializedNodes = orderedNodes.map { it.save(includeDirty = true) }
         val serializedLabels = labels.values.map { it.save(includeDirty = true) }
 
-        return mapOf(
-            "keep_version" to keepVersion,
-            "labels" to serializedLabels,
-            "nodes" to serializedNodes
-        )
+        val payload = JSONObject()
+        payload.put("keep_version", keepVersion ?: JSONObject.NULL)
+        payload.put("labels", JSONArray(serializedLabels))
+        payload.put("nodes", JSONArray(serializedNodes))
+        return payload.toString()
     }
 
     /**
