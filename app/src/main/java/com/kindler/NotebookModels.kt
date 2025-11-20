@@ -1,6 +1,7 @@
 package com.kindler
 
 const val HIGHLIGHTS_FILE_NAME = "kindle_highlights.json"
+const val KEEP_STATE_FILE_NAME = "kindler_keep_state.json"
 
 data class BookEntry(
     val asin: String,

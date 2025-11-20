@@ -214,7 +214,8 @@ class GKeepSyncStateTest {
 
         sync.sync()
 
-        assertEquals(fixture.state["keep_version"], capturedTargetVersion)
+        val fixtureVersion = JSONObject(fixture.state).getString("keep_version")
+        assertEquals(fixtureVersion, capturedTargetVersion)
         val deletedPayload = capturedNodes.firstOrNull { it["id"] == fixture.noteId }
         assertNotNull(deletedPayload)
         val timestamps = deletedPayload!!["timestamps"] as Map<*, *>
@@ -241,16 +242,18 @@ class GKeepSyncStateTest {
         assertTrue(note.labels.all().isEmpty())
         assertNull(sync.findLabel("Archive"))
 
-        val serializedLabels = sync.dump()["labels"] as? List<*>
-        assertNotNull(serializedLabels)
-        @Suppress("UNCHECKED_CAST")
-        val deletedPayload = serializedLabels!!
-            .mapNotNull { it as? Map<*, *> }
-            .firstOrNull { it["mainId"] == label.id }
+        val labelsArray = JSONObject(sync.dump()).getJSONArray("labels")
+        var deletedPayload: JSONObject? = null
+        for (i in 0 until labelsArray.length()) {
+            val entry = labelsArray.optJSONObject(i) ?: continue
+            if (entry.optString("mainId") == label.id) {
+                deletedPayload = entry
+                break
+            }
+        }
         assertNotNull(deletedPayload)
-        @Suppress("UNCHECKED_CAST")
-        val timestamps = deletedPayload!!["timestamps"] as Map<String, Any?>
-        assertNotNull(timestamps["deleted"])
+        val timestamps = deletedPayload!!.getJSONObject("timestamps")
+        assertNotNull(timestamps.opt("deleted"))
     }
 
     @Test
@@ -267,8 +270,16 @@ class GKeepSyncStateTest {
         assertNull(sync.findLabel("ARCHIVE"))
 
         // Ensure the deleted label still exists in the serialized state for syncing.
-        val serializedLabels = sync.dump()["labels"] as? List<*>
-        assertTrue(serializedLabels!!.any { (it as? Map<*, *>)?.get("mainId") == archived.id })
+        val serializedLabels = JSONObject(sync.dump()).getJSONArray("labels")
+        var foundDeleted = false
+        for (i in 0 until serializedLabels.length()) {
+            val entry = serializedLabels.optJSONObject(i) ?: continue
+            if (entry.optString("mainId") == archived.id) {
+                foundDeleted = true
+                break
+            }
+        }
+        assertTrue(foundDeleted)
     }
 
     @Test
@@ -281,11 +292,17 @@ class GKeepSyncStateTest {
         assertEquals(customId, note.id)
         assertSame(note, sync.get(customId))
 
-        @Suppress("UNCHECKED_CAST")
-        val serializedNodes = sync.dump()["nodes"] as List<MutableMap<String, Any?>>
-        val notePayload = serializedNodes.firstOrNull { it["id"] == customId }
+        val serializedNodes = JSONObject(sync.dump()).getJSONArray("nodes")
+        var notePayload: JSONObject? = null
+        for (i in 0 until serializedNodes.length()) {
+            val entry = serializedNodes.optJSONObject(i) ?: continue
+            if (entry.optString("id") == customId) {
+                notePayload = entry
+                break
+            }
+        }
         assertNotNull(notePayload)
-        assertEquals("My Book", notePayload!!["title"])
+        assertEquals("My Book", notePayload!!.optString("title"))
     }
 
     @Test
@@ -299,11 +316,17 @@ class GKeepSyncStateTest {
         assertEquals(customId, textItem.parentId)
         assertSame(note, textItem.parent)
 
-        @Suppress("UNCHECKED_CAST")
-        val serializedNodes = sync.dump()["nodes"] as List<MutableMap<String, Any?>>
-        val textPayload = serializedNodes.firstOrNull { it["id"] == textItem.id }
+        val serializedNodes = JSONObject(sync.dump()).getJSONArray("nodes")
+        var textPayload: JSONObject? = null
+        for (i in 0 until serializedNodes.length()) {
+            val entry = serializedNodes.optJSONObject(i) ?: continue
+            if (entry.optString("id") == textItem.id) {
+                textPayload = entry
+                break
+            }
+        }
         assertNotNull(textPayload)
-        assertEquals(customId, textPayload!!["parentId"])
+        assertEquals(customId, textPayload!!.optString("parentId"))
     }
 }
 
@@ -382,14 +405,13 @@ private object SyncStateFixtures {
         )
 
         val labels = listOf(books.state, errands.state)
-        val state = linkedMapOf<String, Any?>(
-            "keep_version" to version,
-            "labels" to labels,
-            "nodes" to nodes
-        )
+        val stateObject = JSONObject()
+            .put("keep_version", version)
+            .put("labels", JSONArray(labels))
+            .put("nodes", JSONArray(nodes))
 
         return StateFixture(
-            state = state,
+            state = stateObject.toString(),
             noteId = note.id,
             noteServerId = note.serverId!!,
             noteTitle = noteTitle,
@@ -419,7 +441,7 @@ private object SyncStateFixtures {
     )
 
     data class StateFixture(
-        val state: Map<String, Any?>,
+        val state: String,
         val noteId: String,
         val noteServerId: String,
         val noteTitle: String,

@@ -1,13 +1,18 @@
 package com.kindler
 
 import svarzee.gps.gpsoauth.Gpsoauth.TokenRequestFailed
+import java.io.File
 import java.io.IOException
+import java.nio.charset.StandardCharsets
 
 class HighlightsKeepExporter(
     private val highlightsFileStore: HighlightsFileStore,
     private val keepSync: GKeepSync = GKeepSync(),
-    private val labelName: String = "Kindler export"
+    private val labelName: String = "Kindler export",
+    filesDir: File,
+    keepStateFileName: String = KEEP_STATE_FILE_NAME
 ) {
+    private val keepStateFile: File = File(filesDir, keepStateFileName)
 
     @Throws(
         IOException::class,
@@ -18,7 +23,8 @@ class HighlightsKeepExporter(
         UpgradeRecommendedException::class
     )
     fun exportToKeep(email: String, masterToken: String) {
-        keepSync.authenticate(email, masterToken)
+        val cachedState = loadPersistedState()
+        keepSync.authenticate(email, masterToken, state = cachedState)
 
         val label = keepSync.findLabel(labelName) ?: keepSync.createLabel(labelName)
 
@@ -58,5 +64,28 @@ class HighlightsKeepExporter(
         }
 
         keepSync.sync()
+        persistState(keepSync.dump())
+    }
+
+    private fun loadPersistedState(): String? {
+        if (!keepStateFile.exists()) {
+            return null
+        }
+
+        return try {
+            keepStateFile.readText(StandardCharsets.UTF_8).takeIf { it.isNotBlank() }
+        } catch (error: IOException) {
+            null
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun persistState(state: String) {
+        val parentDir = keepStateFile.parentFile
+        if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
+            throw IOException("Failed to create directory for Keep state file: ${parentDir.absolutePath}")
+        }
+
+        keepStateFile.writeText(state, StandardCharsets.UTF_8)
     }
 }
