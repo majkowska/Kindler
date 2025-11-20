@@ -11,7 +11,10 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class HighlightsKeepExporterTest {
 
     @Test
@@ -106,6 +109,38 @@ class HighlightsKeepExporterTest {
             }
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun exportToKeep_ignoresMalformedStateFile() {
+        val tempDir = createTempDir()
+        val stateFile = File(tempDir, KEEP_STATE_FILE_NAME)
+        stateFile.writeText("{not-json")
+
+        val highlightsStore = mockk<HighlightsFileStore>()
+        every { highlightsStore.loadBooks(any(), any()) } returns HighlightsFileStore.LoadResult(
+            books = emptyList(),
+            hasMore = false
+        )
+
+        val keepSync = mockk<GKeepSync>()
+        val existingLabel = Label()
+        every { keepSync.findLabel(any()) } returns existingLabel
+        justRun { keepSync.authenticate(any(), any(), any(), any(), any()) }
+        justRun { keepSync.sync() }
+        every { keepSync.dump() } returns JSONObject().toString()
+
+        val exporter = HighlightsKeepExporter(
+            highlightsFileStore = highlightsStore,
+            keepSync = keepSync,
+            filesDir = tempDir
+        )
+
+        exporter.exportToKeep(TEST_EMAIL, TEST_MASTER_TOKEN)
+
+        verify {
+            keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null)
         }
     }
 

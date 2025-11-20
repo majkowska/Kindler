@@ -1,5 +1,7 @@
 package com.kindler
 
+import android.util.Log
+import org.json.JSONObject
 import svarzee.gps.gpsoauth.Gpsoauth.TokenRequestFailed
 import java.io.File
 import java.io.IOException
@@ -72,9 +74,22 @@ class HighlightsKeepExporter(
             return null
         }
 
+        val rawState = try {
+            keepStateFile.readText(StandardCharsets.UTF_8)
+        } catch (error: Exception) {
+            Log.w(TAG, "Failed to read cached Keep state", error)
+            return null
+        }
+
+        if (rawState.isBlank()) {
+            return null
+        }
+
         return try {
-            keepStateFile.readText(StandardCharsets.UTF_8).takeIf { it.isNotBlank() }
-        } catch (error: IOException) {
+            JSONObject(rawState)
+            rawState
+        } catch (error: Exception) {
+            Log.w(TAG, "Ignoring invalid cached Keep state", error)
             null
         }
     }
@@ -87,5 +102,9 @@ class HighlightsKeepExporter(
         }
 
         keepStateFile.writeText(state, StandardCharsets.UTF_8)
+    }
+
+    companion object {
+        private const val TAG = "HighlightsKeepExporter"
     }
 }
