@@ -26,7 +26,21 @@ class HighlightsKeepExporter(
     )
     fun exportToKeep(email: String, masterToken: String) {
         val cachedState = loadPersistedState()
-        keepSync.authenticate(email, masterToken, state = cachedState)
+        if (cachedState == null) {
+            keepSync.authenticate(email, masterToken, state = null)
+        } else {
+            try {
+                keepSync.authenticate(email, masterToken, state = cachedState)
+            } catch (e: Exception) {
+                when (e) {
+                    is ResyncRequiredException,
+                    is IllegalArgumentException -> {
+                        retryAuthenticationWithoutState(email, masterToken, e)
+                    }
+                    else -> throw e
+                }
+            }
+        }
 
         val label = keepSync.findLabel(labelName) ?: keepSync.createLabel(labelName)
 
@@ -102,6 +116,15 @@ class HighlightsKeepExporter(
         }
 
         keepStateFile.writeText(state, StandardCharsets.UTF_8)
+    }
+
+    private fun retryAuthenticationWithoutState(
+        email: String,
+        masterToken: String,
+        error: Exception
+    ) {
+        Log.w(TAG, "Discarding cached Keep state and retrying authentication", error)
+        keepSync.authenticate(email, masterToken, state = null)
     }
 
     companion object {
