@@ -63,45 +63,46 @@ class ExportFragment : Fragment() {
         }
     }
 
-     private fun startKeepExportFlow() {
-         exportToKeepButton.isEnabled = false
+    private fun startKeepExportFlow() {
+        exportToKeepButton.isEnabled = false
+        val filesDir = requireContext().filesDir
 
-         viewLifecycleOwner.lifecycleScope.launch {
-             val result = withContext(Dispatchers.IO) {
-                 runCatching {
-                     val keepSync = GKeepSync()
-                     keepSync.authenticate(BuildConfig.GOOGLE_ACCOUNT_EMAIL, BuildConfig.MASTER_TOKEN)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val keepExporter = HighlightsKeepExporter(
+                        highlightsFileStore = highlightsFileStore,
+                        filesDir = filesDir
+                    )
+                    keepExporter.exportToKeep(
+                        email = BuildConfig.GOOGLE_ACCOUNT_EMAIL,
+                        masterToken = BuildConfig.MASTER_TOKEN
+                    )
+                }
+            }
 
-                     val note = keepSync.createNote("Test kindler note", "Test kindler note content")
-                     val label = keepSync.createLabel("Kindler export")
-                     note.labels.add(label)
+            if (!isAdded) {
+                return@launch
+            }
 
-                     keepSync.sync()
-                 }
-             }
+            exportToKeepButton.isEnabled = true
 
-             if (!isAdded) {
-                 return@launch
-             }
-
-             exportToKeepButton.isEnabled = true
-
-             result.onSuccess {
-                 Toast.makeText(
-                     requireContext(),
-                     "Exported note to Google Keep",
-                     Toast.LENGTH_SHORT
-                 ).show()
-             }.onFailure { error ->
-                 Log.e(TAG, "Failed to export note to Google Keep", error)
-                 Toast.makeText(
-                     requireContext(),
-                     "Failed to export note to Google Keep",
-                     Toast.LENGTH_LONG
-                 ).show()
-             }
-         }
-     }
+            result.onSuccess {
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.export_success),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }.onFailure { error ->
+                Log.e(TAG, "Failed to export highlights to Google Keep", error)
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.export_failed),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
 
     private fun startCsvExportFlow() {
         val hasHighlights = try {
