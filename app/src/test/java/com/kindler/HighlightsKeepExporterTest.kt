@@ -144,6 +144,123 @@ class HighlightsKeepExporterTest {
         }
     }
 
+    @Test
+    fun exportToKeep_discardsStateWhenAuthenticationRequiresResync() {
+        val tempDir = createTempDir()
+        val stateFile = File(tempDir, KEEP_STATE_FILE_NAME)
+        val persistedStateJson = JSONObject(
+            mapOf(
+                "keep_version" to "v1",
+                "labels" to listOf(mapOf("mainId" to "label-1", "name" to "Kindler export")),
+                "nodes" to listOf(mapOf("id" to "note-1", "parentId" to RootId.ID))
+            )
+        ).toString()
+        stateFile.writeText(persistedStateJson)
+
+        val highlightsStore = mockk<HighlightsFileStore>()
+        every { highlightsStore.loadBooks(any(), any()) } returns HighlightsFileStore.LoadResult(
+            books = emptyList(),
+            hasMore = false
+        )
+
+        val keepSync = mockk<GKeepSync>()
+        val existingLabel = Label()
+        every { keepSync.findLabel(any()) } returns existingLabel
+        every {
+            keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, persistedStateJson, true, null)
+        } throws ResyncRequiredException("Full resync required")
+        justRun { keepSync.resetState() }
+        justRun { keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null) }
+        justRun { keepSync.sync() }
+        val dumpStateJson = JSONObject(
+            mapOf(
+                "keep_version" to "v2",
+                "labels" to emptyList<Any>(),
+                "nodes" to emptyList<Any>()
+            )
+        ).toString()
+        every { keepSync.dump() } returns dumpStateJson
+
+        val exporter = HighlightsKeepExporter(
+            highlightsFileStore = highlightsStore,
+            keepSync = keepSync,
+            filesDir = tempDir
+        )
+
+        exporter.exportToKeep(TEST_EMAIL, TEST_MASTER_TOKEN)
+
+        assertTrue(stateFile.exists())
+        val writtenState = JSONObject(stateFile.readText())
+        assertEquals(JSONObject(dumpStateJson).toString(), writtenState.toString())
+
+        verifySequence {
+            keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, persistedStateJson, true, null)
+            keepSync.resetState()
+            keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null)
+            keepSync.findLabel("Kindler export")
+            keepSync.sync()
+            keepSync.dump()
+        }
+    }
+
+    @Test
+    fun exportToKeep_discardsStateWhenAuthenticationFailsDueToInvalidData() {
+        val tempDir = createTempDir()
+        val stateFile = File(tempDir, KEEP_STATE_FILE_NAME)
+        val invalidStateJson = JSONObject(
+            mapOf(
+                "keep_version" to "v1",
+                "labels" to listOf(mapOf("mainId" to "label-1", "name" to "Kindler export"))
+            )
+        ).toString()
+        stateFile.writeText(invalidStateJson)
+
+        val highlightsStore = mockk<HighlightsFileStore>()
+        every { highlightsStore.loadBooks(any(), any()) } returns HighlightsFileStore.LoadResult(
+            books = emptyList(),
+            hasMore = false
+        )
+
+        val keepSync = mockk<GKeepSync>()
+        val existingLabel = Label()
+        every { keepSync.findLabel(any()) } returns existingLabel
+        every {
+            keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, invalidStateJson, true, null)
+        } throws IllegalArgumentException("State missing nodes")
+        justRun { keepSync.resetState() }
+        justRun { keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null) }
+        justRun { keepSync.sync() }
+        val dumpStateJson = JSONObject(
+            mapOf(
+                "keep_version" to "v2",
+                "labels" to emptyList<Any>(),
+                "nodes" to emptyList<Any>()
+            )
+        ).toString()
+        every { keepSync.dump() } returns dumpStateJson
+
+        val exporter = HighlightsKeepExporter(
+            highlightsFileStore = highlightsStore,
+            keepSync = keepSync,
+            filesDir = tempDir
+        )
+
+        exporter.exportToKeep(TEST_EMAIL, TEST_MASTER_TOKEN)
+
+        assertTrue(stateFile.exists())
+        val writtenState = JSONObject(stateFile.readText())
+        assertEquals(JSONObject(dumpStateJson).toString(), writtenState.toString())
+
+        verifySequence {
+            keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, invalidStateJson, true, null)
+            keepSync.resetState()
+            keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null)
+            keepSync.findLabel("Kindler export")
+            keepSync.sync()
+            keepSync.dump()
+        }
+    }
+
     private fun createTempDir(): File =
         Files.createTempDirectory("keep-exporter-test").toFile()
 
