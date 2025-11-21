@@ -94,7 +94,7 @@ internal fun formatLastAccessedDate(originalDate: String): String {
         } else {
             originalDate
         }
-    } catch (exception: ParseException) {
+    } catch (_: ParseException) {
         originalDate
     }
 }

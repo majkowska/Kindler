@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package com.kindler
 
 import android.util.Log
@@ -481,7 +483,6 @@ class GKeepSync {
     companion object {
         private const val GOOGLE_KEEP_SCOPES =
             "oauth2:https://www.googleapis.com/auth/memento https://www.googleapis.com/auth/reminders"
-        private const val GOOGLE_KEEP_APP = "com.google.android.keep"
         private const val LOG_TAG = "GKeepSync"
     }
 }
@@ -754,9 +755,9 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
     }
 }
 
-sealed class HttpMethod(val verb: String) {
-    object Get : HttpMethod("GET")
-    data class Post(val body: JSONObject) : HttpMethod("POST")
+sealed class HttpMethod() {
+    object Get : HttpMethod()
+    data class Post(val body: JSONObject) : HttpMethod()
 }
 
 data class APIRequest(

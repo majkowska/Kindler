@@ -74,9 +74,6 @@ class ImportFragment : Fragment() {
                     ImportState.LOADING_HIGHLIGHTS -> verifyUrlAndProceed(
                         HIGHLIGHT_URL_PREFIX, url, "extract_highlights.js"
                     )
-                    else -> {
-                        // No action needed for other states
-                    }
                 }
             }
         }
@@ -209,6 +206,7 @@ class ImportFragment : Fragment() {
     }
 
     inner class WebAppInterface {
+        @Suppress("unused")
         @JavascriptInterface
         fun reportUiStatus(
             isLoggedIn: Boolean,
@@ -229,6 +227,7 @@ class ImportFragment : Fragment() {
             }
         }
 
+        @Suppress("unused")
         @JavascriptInterface
         fun processBookData(bookDataJson: String) {
             if (importStateMachine.state != ImportState.LOADING_BOOK_LIST) return
@@ -256,6 +255,7 @@ class ImportFragment : Fragment() {
                 }
         }
 
+        @Suppress("unused")
         @JavascriptInterface
         fun processBookHighlights(highlightsJson: String) {
             if (importStateMachine.state != ImportState.LOADING_HIGHLIGHTS) return
