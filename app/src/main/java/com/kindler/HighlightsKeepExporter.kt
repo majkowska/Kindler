@@ -6,6 +6,7 @@ import svarzee.gps.gpsoauth.Gpsoauth.TokenRequestFailed
 import java.io.File
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.net.SocketTimeoutException
 
 class HighlightsKeepExporter(
     private val highlightsFileStore: HighlightsFileStore,
@@ -26,21 +27,9 @@ class HighlightsKeepExporter(
     )
     fun exportToKeep(email: String, masterToken: String) {
         val cachedState = loadPersistedState()
-        if (cachedState == null) {
-            keepSync.authenticate(email, masterToken, state = null)
-        } else {
-            try {
-                keepSync.authenticate(email, masterToken, state = cachedState)
-            } catch (error: Exception) {
-                when (error) {
-                    is ResyncRequiredException,
-                    is IllegalArgumentException -> {
-                        retryAuthenticationWithoutState(email, masterToken, error)
-                    }
-                    else -> throw error
-                }
-            }
-        }
+        authenticateWithoutState(email, masterToken)
+        restoreState(cachedState)
+        performSyncWithRetries(resyncOnForceFull = true)
 
         val label = keepSync.findLabel(labelName) ?: keepSync.createLabel(labelName)
 
@@ -76,7 +65,7 @@ class HighlightsKeepExporter(
             }
         }
 
-        keepSync.sync()
+        performSyncWithRetries(resyncOnForceFull = false)
         persistState(keepSync.dump())
     }
 
@@ -115,14 +104,63 @@ class HighlightsKeepExporter(
         keepStateFile.writeText(state, StandardCharsets.UTF_8)
     }
 
-    private fun retryAuthenticationWithoutState(
+    private fun authenticateWithoutState(
         email: String,
-        masterToken: String,
-        error: Exception
+        masterToken: String
     ) {
-        Log.w(TAG, "Discarding cached Keep state and retrying authentication", error)
-        keepSync.resetState()
-        keepSync.authenticate(email, masterToken, state = null)
+        retryWithTimeoutHandling("authenticating with Google Keep") {
+            keepSync.authenticate(email, masterToken, state = null, sync = false)
+        }
+    }
+
+    private fun restoreState(state: String?) {
+        if (state.isNullOrBlank()) {
+            return
+        }
+
+        try {
+            keepSync.restore(state)
+        } catch (error: IllegalArgumentException) {
+            Log.w(TAG, "Persisted Keep state is invalid, clearing local cache", error)
+            keepSync.clear()
+        }
+    }
+
+    private fun performSyncWithRetries(resyncOnForceFull: Boolean) {
+        try {
+            retryWithTimeoutHandling("syncing with Google Keep") {
+                keepSync.sync(resync = false)
+            }
+        } catch (error: ResyncRequiredException) {
+            if (!resyncOnForceFull) {
+                throw error
+            }
+            Log.w(TAG, "Keep requested a full resync; retrying sync from scratch", error)
+            keepSync.clear()
+            retryWithTimeoutHandling("syncing with Google Keep") {
+                keepSync.sync(resync = true)
+            }
+        }
+    }
+
+    private fun retryWithTimeoutHandling(
+        operation: String,
+        block: () -> Unit
+    ) {
+        var lastError: SocketTimeoutException? = null
+        repeat(MAX_TIMEOUT_ATTEMPTS) { attempt ->
+            try {
+                block()
+                return
+            } catch (timeout: SocketTimeoutException) {
+                lastError = timeout
+                Log.w(TAG, "Timeout while $operation (attempt ${attempt + 1})", timeout)
+            } catch (error: Exception) {
+                throw error
+            }
+        }
+        val cause = lastError ?: SocketTimeoutException("Timeout while $operation")
+        throw KeepSyncTimeoutException("Timed out while $operation", cause)
     }
 
     private fun buildKeepNoteText(book: BookEntry, highlightEntry: HighlightEntry): String {
@@ -157,5 +195,8 @@ class HighlightsKeepExporter(
 
     companion object {
         private const val TAG = "HighlightsKeepExporter"
+        private const val MAX_TIMEOUT_ATTEMPTS = 2
     }
 }
+
+class KeepSyncTimeoutException(message: String, cause: Throwable) : IOException(message, cause)
