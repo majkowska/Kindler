@@ -64,6 +64,27 @@ class ExportFragment : Fragment() {
     }
 
     private fun startKeepExportFlow() {
+        val hasHighlights = try {
+            highlightsCsvExporter.hasAnyHighlights()
+        } catch (ioException: IOException) {
+            Log.e(TAG, "Failed to read highlights for Keep export", ioException)
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.export_failed),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        if (!hasHighlights) {
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.export_no_data),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
         exportToKeepButton.isEnabled = false
         val filesDir = requireContext().filesDir
 
