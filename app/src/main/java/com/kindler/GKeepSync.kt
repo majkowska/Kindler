@@ -180,7 +180,7 @@ class GKeepSync {
         }
 
         createdNodes.forEach { node ->
-            Log.d(LOG_TAG, "Attached node: ${'$'}{node.id} to ${'$'}{node.parentId}")
+            Log.d(LOG_TAG, "Attached node: ${node.id} to ${node.parentId}")
             val parentNode = node.parentId?.let { nodes[it] }
             parentNode?.append(node, false)
         }
@@ -189,7 +189,7 @@ class GKeepSync {
             node.parent?.remove(node, false)
             nodes.remove(node.id)
             node.serverId?.let { sidMap.remove(it) }
-            Log.d(LOG_TAG, "Deleted node: ${'$'}{node.id}")
+            Log.d(LOG_TAG, "Deleted node: ${node.id}")
         }
 
         allNodes().forEach { node ->
@@ -700,7 +700,7 @@ class KeepAPI(auth: APIAuth? = null) : API(API_URL, auth) {
             }
         }
 
-        Log.d(LOG_TAG, "Syncing ${'$'}{labels.size} labels and ${'$'}{nodes.size} nodes")
+        Log.d(LOG_TAG, "Syncing ${labels.size} labels and ${nodes.size} nodes")
 
         return send(
             APIRequest(
