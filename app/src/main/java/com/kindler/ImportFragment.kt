@@ -113,6 +113,10 @@ class ImportFragment : Fragment() {
         }
         activity?.runOnUiThread {
             overlayLayout.visibility = View.VISIBLE
+            if (finalState == ImportState.FINISHED) {
+                Log.d(TAG, "Import finished, returning to notebook page: $NOTEBOOK_URL")
+                myWebView.loadUrl(NOTEBOOK_URL)
+            }
             checkLoginAndUrlStatus()
         }
     }
