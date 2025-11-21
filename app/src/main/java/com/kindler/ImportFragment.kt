@@ -65,7 +65,9 @@ class ImportFragment : Fragment() {
                 Log.i(TAG, "New page finished loading: $url")
                 Log.d(TAG, "Current state: ${importStateMachine.state}")
                 when (importStateMachine.state) {
-                    ImportState.INITIAL -> checkLoginAndUrlStatus()
+                    ImportState.INITIAL,
+                    ImportState.FINISHED,
+                    ImportState.ERROR -> checkLoginAndUrlStatus()
                     ImportState.LOADING_BOOK_LIST -> verifyUrlAndProceed(
                         NOTEBOOK_URL, url, "extract_book_list.js"
                     )
@@ -113,6 +115,10 @@ class ImportFragment : Fragment() {
         }
         activity?.runOnUiThread {
             overlayLayout.visibility = View.VISIBLE
+            if (finalState == ImportState.FINISHED) {
+                Log.d(TAG, "Import finished, returning to notebook page: $NOTEBOOK_URL")
+                myWebView.loadUrl(NOTEBOOK_URL)
+            }
             checkLoginAndUrlStatus()
         }
     }
