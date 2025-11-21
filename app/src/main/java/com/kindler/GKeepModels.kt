@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package com.kindler
 
 import android.util.Log
@@ -298,7 +300,7 @@ class Context : Annotation() {
         val ret = super.save(includeDirty)
         val ctx = mutableMapOf<String, Any?>()
         entries.forEach { entry ->
-            ctx.put(entry.key, entry.value.save(includeDirty))
+            ctx[entry.key] = entry.value.save(includeDirty)
         }
         ret["context"] = ctx
         return ret
@@ -954,11 +956,13 @@ class ListNode : TopLevelNode(NodeType.List) {
         when (sort) {
             is Int -> node.sort = sort.toLong()
             is NewListItemPlacementValue -> if (items.isNotEmpty()) {
-                val func: (Long, Long) -> Long
-                var delta = SORT_DELTA.toLong()
-                if (sort == NewListItemPlacementValue.Bottom) { func = ::min; delta *= -1 }
-                else func = ::max
-                val boundary = func(items.maxOf { it.sort }, items.minOf { it.sort })
+                val maxSort = items.maxOf { it.sort }
+                val minSort = items.minOf { it.sort }
+                val (boundary, delta) = if (sort == NewListItemPlacementValue.Bottom) {
+                    min(maxSort, minSort) to -SORT_DELTA.toLong()
+                } else {
+                    max(maxSort, minSort) to SORT_DELTA.toLong()
+                }
                 node.sort = boundary + delta
             }
         }

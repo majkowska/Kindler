@@ -49,10 +49,6 @@ class DisplayFragment : Fragment() {
         loadInitialBooks()
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-    }
-
     private fun loadInitialBooks() {
         hasMoreBooks = false
         contentLayout.removeAllViews()
