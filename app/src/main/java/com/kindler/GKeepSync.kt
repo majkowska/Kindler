@@ -32,6 +32,10 @@ class GKeepSync {
         clear()
     }
 
+    fun resetState() {
+        clear()
+    }
+
     private fun clear() {
         keepVersion = null
         labels.clear()

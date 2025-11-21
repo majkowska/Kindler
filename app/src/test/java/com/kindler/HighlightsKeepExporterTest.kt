@@ -169,6 +169,7 @@ class HighlightsKeepExporterTest {
         every {
             keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, persistedStateJson, true, null)
         } throws ResyncRequiredException("Full resync required")
+        justRun { keepSync.resetState() }
         justRun { keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null) }
         justRun { keepSync.sync() }
         val dumpStateJson = JSONObject(
@@ -194,6 +195,7 @@ class HighlightsKeepExporterTest {
 
         verifySequence {
             keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, persistedStateJson, true, null)
+            keepSync.resetState()
             keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null)
             keepSync.findLabel("Kindler export")
             keepSync.sync()
@@ -225,6 +227,7 @@ class HighlightsKeepExporterTest {
         every {
             keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, invalidStateJson, true, null)
         } throws IllegalArgumentException("State missing nodes")
+        justRun { keepSync.resetState() }
         justRun { keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null) }
         justRun { keepSync.sync() }
         val dumpStateJson = JSONObject(
@@ -250,6 +253,7 @@ class HighlightsKeepExporterTest {
 
         verifySequence {
             keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, invalidStateJson, true, null)
+            keepSync.resetState()
             keepSync.authenticate(TEST_EMAIL, TEST_MASTER_TOKEN, null, true, null)
             keepSync.findLabel("Kindler export")
             keepSync.sync()

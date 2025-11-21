@@ -31,13 +31,13 @@ class HighlightsKeepExporter(
         } else {
             try {
                 keepSync.authenticate(email, masterToken, state = cachedState)
-            } catch (e: Exception) {
-                when (e) {
+            } catch (error: Exception) {
+                when (error) {
                     is ResyncRequiredException,
                     is IllegalArgumentException -> {
-                        retryAuthenticationWithoutState(email, masterToken, e)
+                        retryAuthenticationWithoutState(email, masterToken, error)
                     }
-                    else -> throw e
+                    else -> throw error
                 }
             }
         }
@@ -124,6 +124,7 @@ class HighlightsKeepExporter(
         error: Exception
     ) {
         Log.w(TAG, "Discarding cached Keep state and retrying authentication", error)
+        keepSync.resetState()
         keepSync.authenticate(email, masterToken, state = null)
     }
 
