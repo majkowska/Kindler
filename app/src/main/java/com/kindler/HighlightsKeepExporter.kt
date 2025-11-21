@@ -54,24 +54,21 @@ class HighlightsKeepExporter(
             }
 
             loadResult.books.forEach { book ->
-                book.highlights.forEach { highlightEntry ->
-                    val contentHash = (highlightEntry.highlight + highlightEntry.note).hashCode()
-                    val noteId = "${book.asin}.${Integer.toHexString(contentHash)}"
+                book.highlights
+                    .filter { it.note.isNotBlank() }
+                    .forEach { highlightEntry ->
+                        val contentHash = (highlightEntry.highlight + highlightEntry.note).hashCode()
+                        val noteId = "${book.asin}.${Integer.toHexString(contentHash)}"
 
-                    if (keepSync.get(noteId) == null) {
-                        val text = StringBuilder(highlightEntry.highlight)
-                        if (highlightEntry.note.isNotBlank()) {
-                            text.append("\n\nNote: ").append(highlightEntry.note)
+                        if (keepSync.get(noteId) == null) {
+                            val note = keepSync.createNote(
+                                title = "",
+                                text = buildKeepNoteText(book, highlightEntry),
+                                id = noteId
+                            )
+                            note.labels.add(label)
                         }
-
-                        val note = keepSync.createNote(
-                            title = book.title,
-                            text = text.toString(),
-                            id = noteId
-                        )
-                        note.labels.add(label)
                     }
-                }
             }
 
             if (!loadResult.hasMore) {
@@ -126,6 +123,36 @@ class HighlightsKeepExporter(
         Log.w(TAG, "Discarding cached Keep state and retrying authentication", error)
         keepSync.resetState()
         keepSync.authenticate(email, masterToken, state = null)
+    }
+
+    private fun buildKeepNoteText(book: BookEntry, highlightEntry: HighlightEntry): String {
+        val highlightText = highlightEntry.highlight.trim()
+        val noteText = highlightEntry.note.trim()
+        val titleText = book.title.trim()
+        val authorText = book.author.trim()
+
+        val builder = StringBuilder()
+        if (highlightText.isNotEmpty()) {
+            builder.append(highlightText)
+        } else {
+            builder.append("Highlight")
+        }
+        builder.append("\n")
+        builder.append("**Note:** ").append(noteText)
+        builder.append("\n")
+        builder.append("--")
+        val hasTitle = titleText.isNotEmpty()
+        val hasAuthor = authorText.isNotEmpty()
+        if (hasTitle) {
+            builder.append("*").append(titleText).append("*")
+        }
+        if (hasTitle && hasAuthor) {
+            builder.append(" by ").append(authorText)
+        } else if (!hasTitle && hasAuthor) {
+            builder.append(authorText)
+        }
+
+        return builder.toString()
     }
 
     companion object {

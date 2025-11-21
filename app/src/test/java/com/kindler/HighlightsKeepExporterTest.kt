@@ -261,6 +261,113 @@ class HighlightsKeepExporterTest {
         }
     }
 
+    @Test
+    fun exportToKeep_onlyCreatesNotesForHighlightsWithAnnotations() {
+        val tempDir = createTempDir()
+        try {
+            val highlightWithNote = HighlightEntry(
+                highlight = "Highlight with note",
+                note = "Interesting thought"
+            )
+            val highlightWithoutNote = HighlightEntry(
+                highlight = "Highlight without note",
+                note = ""
+            )
+            val book = BookEntry(
+                asin = "ASIN123",
+                title = "Sample Book",
+                author = "Sample Author",
+                lastAccessedDate = "today",
+                highlights = listOf(highlightWithNote, highlightWithoutNote)
+            )
+
+            val highlightsStore = mockk<HighlightsFileStore>()
+            every { highlightsStore.loadBooks(any(), any()) } returns HighlightsFileStore.LoadResult(
+                books = listOf(book),
+                hasMore = false
+            )
+
+            val keepSync = mockk<GKeepSync>()
+            val existingLabel = Label()
+            every { keepSync.findLabel(any()) } returns existingLabel
+            justRun { keepSync.authenticate(any(), any(), any(), any(), any()) }
+            justRun { keepSync.sync() }
+            every { keepSync.dump() } returns JSONObject().toString()
+            every { keepSync.get(any()) } returns null
+            every { keepSync.createNote(any(), any(), any()) } answers { Note() }
+
+            val exporter = HighlightsKeepExporter(
+                highlightsFileStore = highlightsStore,
+                keepSync = keepSync,
+                filesDir = tempDir
+            )
+
+            exporter.exportToKeep(TEST_EMAIL, TEST_MASTER_TOKEN)
+
+            val expectedNoteId = "${book.asin}.${
+                Integer.toHexString((highlightWithNote.highlight + highlightWithNote.note).hashCode())
+            }"
+            verify(exactly = 1) {
+                keepSync.createNote(eq(""), any(), eq(expectedNoteId))
+            }
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun exportToKeep_formatsNoteBodyAndTitleForKeep() {
+        val tempDir = createTempDir()
+        try {
+            val highlightEntry = HighlightEntry(
+                highlight = "To be or not to be",
+                note = "Sounds familiar"
+            )
+            val book = BookEntry(
+                asin = "ASIN456",
+                title = "Hamlet",
+                author = "William Shakespeare",
+                lastAccessedDate = "yesterday",
+                highlights = listOf(highlightEntry)
+            )
+
+            val highlightsStore = mockk<HighlightsFileStore>()
+            every { highlightsStore.loadBooks(any(), any()) } returns HighlightsFileStore.LoadResult(
+                books = listOf(book),
+                hasMore = false
+            )
+
+            val keepSync = mockk<GKeepSync>()
+            val existingLabel = Label()
+            every { keepSync.findLabel(any()) } returns existingLabel
+            justRun { keepSync.authenticate(any(), any(), any(), any(), any()) }
+            justRun { keepSync.sync() }
+            every { keepSync.dump() } returns JSONObject().toString()
+            every { keepSync.get(any()) } returns null
+            every { keepSync.createNote(any(), any(), any()) } answers { Note() }
+
+            val exporter = HighlightsKeepExporter(
+                highlightsFileStore = highlightsStore,
+                keepSync = keepSync,
+                filesDir = tempDir
+            )
+
+            exporter.exportToKeep(TEST_EMAIL, TEST_MASTER_TOKEN)
+
+            val expectedText = listOf(
+                highlightEntry.highlight,
+                "**Note:** ${highlightEntry.note}",
+                "--*${book.title}* by ${book.author}"
+            ).joinToString("\n")
+
+            verify {
+                keepSync.createNote(eq(""), eq(expectedText), any())
+            }
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
     private fun createTempDir(): File =
         Files.createTempDirectory("keep-exporter-test").toFile()
 
