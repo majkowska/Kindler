@@ -15,4 +15,5 @@
     <string name="export_no_data">No highlights available to export.</string>
     <string name="export_success">Highlights exported successfully.</string>
     <string name="export_failed">Failed to export highlights.</string>
+    <string name="export_timeout">Request to Google Keep timed out. Please try again.</string>
 </resources>

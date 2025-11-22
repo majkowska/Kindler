@@ -116,9 +116,14 @@ class ExportFragment : Fragment() {
                 ).show()
             }.onFailure { error ->
                 Log.e(TAG, "Failed to export highlights to Google Keep", error)
+                val messageRes = if (error is KeepSyncTimeoutException) {
+                    R.string.export_timeout
+                } else {
+                    R.string.export_failed
+                }
                 Toast.makeText(
                     requireContext(),
-                    getString(R.string.export_failed),
+                    getString(messageRes),
                     Toast.LENGTH_LONG
                 ).show()
             }
