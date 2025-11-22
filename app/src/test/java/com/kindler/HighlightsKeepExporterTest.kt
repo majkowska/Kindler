@@ -351,7 +351,7 @@ class HighlightsKeepExporterTest {
             val existingLabel = Label()
             every { keepSync.findLabel(any()) } returns existingLabel
             justRun { keepSync.authenticate(any(), any(), any(), any(), any()) }
-            justRun { keepSync.sync() }
+            justRun { keepSync.sync(any()) }
             every { keepSync.dump() } returns JSONObject().toString()
             every { keepSync.get(any()) } returns null
             every { keepSync.createNote(any(), any(), any()) } answers { Note() }
@@ -401,7 +401,7 @@ class HighlightsKeepExporterTest {
             val existingLabel = Label()
             every { keepSync.findLabel(any()) } returns existingLabel
             justRun { keepSync.authenticate(any(), any(), any(), any(), any()) }
-            justRun { keepSync.sync() }
+            justRun { keepSync.sync(any()) }
             every { keepSync.dump() } returns JSONObject().toString()
             every { keepSync.get(any()) } returns null
             every { keepSync.createNote(any(), any(), any()) } answers { Note() }
